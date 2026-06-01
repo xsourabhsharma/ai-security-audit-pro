@@ -3,6 +3,8 @@
 > A security-audit plugin that AI agents can actually run.
 
 ![CI](https://github.com/xsourabhsharma/ai-security-audit-pro/actions/workflows/ci.yml/badge.svg)
+[![npm](https://img.shields.io/npm/v/ai-security-audit-pro.svg)](https://www.npmjs.com/package/ai-security-audit-pro)
+[![ClawHub](https://img.shields.io/badge/ClawHub-ai--security--audit--pro-111827.svg)](https://clawhub.ai/plugins/ai-security-audit-pro)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Node.js](https://img.shields.io/badge/node-%3E%3D18-339933.svg)
 ![OWASP](https://img.shields.io/badge/OWASP-ASVS%20%7C%20Top%2010%20%7C%20WSTG-111827.svg)
@@ -54,6 +56,26 @@ node scripts/security-audit.mjs --target . --out security-audit-report.md --html
 
 An agent can run that command, read the report, validate the evidence, summarize the risk, and tell you what still needs manual testing.
 
+## Install From Registries
+
+Use npm when you want the CLI available to any shell-capable agent:
+
+```bash
+npm install -g ai-security-audit-pro
+security-audit-pro --target . --out security-audit-report.md --html-out security-audit-report.html
+```
+
+Use ClawHub when you want OpenClaw to install the plugin from its native registry:
+
+```bash
+openclaw plugins install clawhub:ai-security-audit-pro
+```
+
+Registry pages:
+
+- npm: [ai-security-audit-pro](https://www.npmjs.com/package/ai-security-audit-pro)
+- ClawHub: [ai-security-audit-pro](https://clawhub.ai/plugins/ai-security-audit-pro)
+
 ## Supported Agents
 
 | Agent or tool | Included support |
@@ -100,7 +122,14 @@ No honest security tool can promise to find every vulnerability. This plugin is 
 
 ## Quick Start
 
-Clone and verify:
+Fastest path from npm:
+
+```bash
+npm install -g ai-security-audit-pro
+security-audit-pro --target . --out security-audit-report.md --html-out security-audit-report.html
+```
+
+Source checkout path:
 
 ```bash
 git clone https://github.com/xsourabhsharma/ai-security-audit-pro.git
@@ -108,17 +137,16 @@ cd ai-security-audit-pro
 npm test
 ```
 
-Run a local audit:
+Run the local engine from source:
 
 ```bash
 node scripts/security-audit.mjs --target . --out security-audit-report.md --html-out security-audit-report.html
 ```
 
-Install globally from GitHub:
+OpenClaw path from ClawHub:
 
 ```bash
-npm install -g github:xsourabhsharma/ai-security-audit-pro
-security-audit-pro --target .
+openclaw plugins install clawhub:ai-security-audit-pro
 ```
 
 Requirements:

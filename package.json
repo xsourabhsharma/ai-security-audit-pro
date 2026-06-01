@@ -4,7 +4,7 @@
   "description": "Universal security-audit plugin and CLI engine for AI agents with OWASP-mapped reports.",
   "type": "module",
   "bin": {
-    "security-audit-pro": "./scripts/security-audit.mjs"
+    "security-audit-pro": "scripts/security-audit.mjs"
   },
   "scripts": {
     "check": "node --check scripts/security-audit.mjs",
@@ -22,6 +22,7 @@
     "skills/",
     "templates/",
     ".mcp.json",
+    "openclaw.plugin.json",
     "AGENTS.md",
     "CLAUDE.md",
     "GEMINI.md",
@@ -42,13 +43,25 @@
     "agent-plugin",
     "ai-plugin",
     "security-plugin",
-    "ai-agents"
+    "ai-agents",
+    "codex",
+    "claude-code",
+    "gemini-cli",
+    "openclaw",
+    "clawhub"
   ],
   "author": "Security Audit Pro maintainers",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/xsourabhsharma/ai-security-audit-pro.git"
+    "url": "git+https://github.com/xsourabhsharma/ai-security-audit-pro.git"
+  },
+  "homepage": "https://github.com/xsourabhsharma/ai-security-audit-pro#readme",
+  "bugs": {
+    "url": "https://github.com/xsourabhsharma/ai-security-audit-pro/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=18"
