@@ -1,7 +1,7 @@
 {
   "name": "security-audit-pro",
   "version": "0.7.0",
-  "description": "Agent-ready defensive website and web-application security audit workflows with professional Markdown, HTML, and PDF reports.",
+  "description": "Universal AI-agent security audit plugin for defensive website, API, and codebase audits with professional Markdown, HTML, and PDF reports.",
   "author": {
     "name": "Security Audit Pro maintainers",
     "url": "https://github.com/xsourabhsharma/ai-security-audit-pro"
