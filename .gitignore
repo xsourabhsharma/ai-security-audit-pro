@@ -1,0 +1,48 @@
+# Dependencies and package manager output
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Local scanner/tool installs. Do not commit bundled binaries.
+tools/
+bin/
+*.exe
+*.dll
+*.jar
+*.zip
+*.7z
+*.tar
+*.tar.gz
+
+# Reports and audit output
+reports/
+security-audit-report.*
+*-security-report.*
+*-audit-report.*
+self-audit.*
+*.har
+*.zap
+zap-home/
+.ZAP/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Logs and temp files
+*.log
+tmp/
+temp/
+.cache/

@@ -1,0 +1,53 @@
+{
+  "name": "ai-security-audit-pro",
+  "version": "0.7.0",
+  "description": "Agent-ready defensive web and application security audit CLI with OWASP-mapped reports.",
+  "type": "module",
+  "bin": {
+    "security-audit-pro": "./scripts/security-audit.mjs"
+  },
+  "scripts": {
+    "check": "node --check scripts/security-audit.mjs",
+    "smoke": "node scripts/security-audit.mjs --help",
+    "test": "npm run check && npm run smoke"
+  },
+  "files": [
+    ".codex-plugin/",
+    ".claude-plugin/",
+    "agent-adapters/",
+    "assets/",
+    "docs/",
+    "examples/",
+    "scripts/",
+    "skills/",
+    "templates/",
+    ".mcp.json",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "GEMINI.md",
+    "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "README.md",
+    "SECURITY.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "security",
+    "security-audit",
+    "owasp",
+    "sast",
+    "dast",
+    "web-security",
+    "agent-plugin"
+  ],
+  "author": "Security Audit Pro maintainers",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xsourabhsharma/ai-security-audit-pro.git"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

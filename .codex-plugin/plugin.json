@@ -1,0 +1,50 @@
+{
+  "name": "security-audit-pro",
+  "version": "0.7.0",
+  "description": "Agent-ready defensive website and web-application security audit workflows with professional OWASP-mapped reports for local projects, localhost, staging, and authorized public targets.",
+  "author": {
+    "name": "Security Audit Pro maintainers",
+    "url": "https://github.com/xsourabhsharma/ai-security-audit-pro"
+  },
+  "homepage": "https://owasp.org/www-project-web-security-testing-guide/",
+  "repository": "https://github.com/xsourabhsharma/ai-security-audit-pro",
+  "license": "MIT",
+  "keywords": [
+    "security",
+    "audit",
+    "owasp",
+    "sast",
+    "dast",
+    "web"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Security Audit Pro",
+    "shortDescription": "Audit codebases and websites for high-impact web security risks.",
+    "longDescription": "Runs a defensive, evidence-based security audit workflow across local source code, dependencies, secrets, HTTP security headers, TLS posture, CORS behavior, HTTP method exposure, API schema discovery, crawler-discovered surfaces, bounded content discovery, authenticated/business-logic scope planning, PDF/HTML reporting, and optional authorized DAST tooling. Reports use a professional bug-analysis format with assessment conclusion, confirmed/likely/needs-validation status, evidence, risk, impact, remediation, safe PoC/validation steps, reviewed surfaces, and coverage matrix. HTML output is a self-contained executive dashboard with severity/status cards and expandable findings. Built around OWASP ASVS, WSTG, OWASP Top 10, API Security Top 10, Semgrep, OSV, Gitleaks, TruffleHog, httpx, SSLyze, katana, ffuf, Nuclei, OWASP ZAP Docker baseline, and bundled standalone OWASP ZAP Quick Start scans.",
+    "developerName": "Security Audit Pro maintainers",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Security Review",
+      "Local Project Audit",
+      "Website Audit",
+      "Diff Scan",
+      "Report Generation",
+      "HTML Report",
+      "PDF Report",
+      "Deep Profile",
+      "Professional Bug Report",
+      "Coverage Matrix"
+    ],
+    "websiteURL": "https://github.com/xsourabhsharma/ai-security-audit-pro",
+    "privacyPolicyURL": "https://github.com/xsourabhsharma/ai-security-audit-pro/blob/main/SECURITY.md",
+    "termsOfServiceURL": "https://github.com/xsourabhsharma/ai-security-audit-pro/blob/main/README.md",
+    "defaultPrompt": [
+      "Run a security audit on this project.",
+      "Audit this website's security headers.",
+      "Review this app for OWASP risks."
+    ],
+    "brandColor": "#0F766E"
+  }
+}

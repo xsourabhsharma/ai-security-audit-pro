@@ -1,0 +1,354 @@
+{
+  "baselines": {
+    "owaspTop10": "2021",
+    "owaspApiTop10": "2023",
+    "asvs": "5.0.0",
+    "wstg": "latest"
+  },
+  "headers": {
+    "requiredOrRecommended": [
+      {
+        "name": "Content-Security-Policy",
+        "severity": "medium",
+        "owasp": "A05:2021 Security Misconfiguration",
+        "advice": "Define a CSP that avoids unsafe inline script, restricts default-src, and sets frame-ancestors."
+      },
+      {
+        "name": "X-Content-Type-Options",
+        "severity": "low",
+        "expected": "nosniff",
+        "owasp": "A05:2021 Security Misconfiguration",
+        "advice": "Set X-Content-Type-Options: nosniff."
+      },
+      {
+        "name": "Strict-Transport-Security",
+        "severity": "medium",
+        "httpsOnly": true,
+        "owasp": "A02:2021 Cryptographic Failures",
+        "advice": "Enable HSTS only after confirming every subdomain and environment supports HTTPS."
+      },
+      {
+        "name": "Referrer-Policy",
+        "severity": "low",
+        "owasp": "A01:2021 Broken Access Control",
+        "advice": "Use a restrictive policy such as strict-origin-when-cross-origin or no-referrer."
+      },
+      {
+        "name": "Permissions-Policy",
+        "severity": "low",
+        "owasp": "A05:2021 Security Misconfiguration",
+        "advice": "Disable sensitive browser capabilities that the application does not use."
+      }
+    ],
+    "deprecatedOrLeaky": [
+      {
+        "name": "X-Powered-By",
+        "severity": "info",
+        "advice": "Remove framework/version disclosure where practical."
+      },
+      {
+        "name": "Server",
+        "severity": "info",
+        "advice": "Avoid detailed server version disclosure."
+      }
+    ]
+  },
+  "localPatterns": [
+    {
+      "id": "js-eval",
+      "language": "javascript",
+      "regex": "\\beval\\s*\\(",
+      "severity": "high",
+      "cwe": "CWE-95",
+      "owasp": "A03:2021 Injection",
+      "message": "Dynamic eval can execute attacker-controlled code."
+    },
+    {
+      "id": "js-function-constructor",
+      "language": "javascript",
+      "regex": "\\bnew\\s+Function\\s*\\(",
+      "severity": "high",
+      "cwe": "CWE-95",
+      "owasp": "A03:2021 Injection",
+      "message": "Function constructor can execute attacker-controlled code."
+    },
+    {
+      "id": "react-dangerous-html",
+      "language": "javascript",
+      "regex": "dangerouslySetInnerHTML",
+      "severity": "medium",
+      "cwe": "CWE-79",
+      "owasp": "A03:2021 Injection",
+      "message": "Raw HTML rendering needs strict sanitization and trusted input boundaries."
+    },
+    {
+      "id": "js-innerhtml",
+      "language": "javascript",
+      "regex": "\\.innerHTML\\s*=",
+      "severity": "medium",
+      "cwe": "CWE-79",
+      "owasp": "A03:2021 Injection",
+      "message": "Assigning innerHTML can create DOM XSS if data is not trusted and sanitized."
+    },
+    {
+      "id": "node-child-process-exec",
+      "language": "javascript",
+      "regex": "(?<!\\.)\\bexec(Sync)?\\s*\\(",
+      "severity": "medium",
+      "cwe": "CWE-78",
+      "owasp": "A03:2021 Injection",
+      "message": "Shell execution needs argument arrays, allowlists, and no raw user input."
+    },
+    {
+      "id": "node-file-read-hotspot",
+      "language": "javascript",
+      "regex": "\\b(createReadStream|sendFile|res\\.download|res\\.sendFile)\\s*\\(",
+      "severity": "low",
+      "cwe": "CWE-22",
+      "owasp": "A01:2021 Broken Access Control",
+      "message": "File read or send path should be reviewed for path traversal and authorization."
+    },
+    {
+      "id": "node-ssrf-hotspot",
+      "language": "javascript",
+      "regex": "\\b(fetch|request|got|axios\\.(get|post|put|patch|delete))\\s*\\([^\\n]*(req\\.|request\\.|params|query|body|callback|webhook|url|uri|redirect|targetUrl|inputUrl)",
+      "severity": "low",
+      "cwe": "CWE-918",
+      "owasp": "A10:2021 Server-Side Request Forgery",
+      "message": "Outbound request sink should be reviewed for SSRF controls if the destination is user-controlled."
+    },
+    {
+      "id": "prisma-query-raw-unsafe",
+      "language": "javascript",
+      "regex": "\\$queryRawUnsafe\\s*\\(",
+      "severity": "high",
+      "cwe": "CWE-89",
+      "owasp": "A03:2021 Injection",
+      "message": "Prisma queryRawUnsafe can enable SQL injection when fed attacker-controlled input."
+    },
+    {
+      "id": "mongo-where",
+      "language": "javascript",
+      "regex": "\\$where\\s*:",
+      "severity": "medium",
+      "cwe": "CWE-943",
+      "owasp": "A03:2021 Injection",
+      "message": "MongoDB $where can execute JavaScript or alter query semantics with unsafe input."
+    },
+    {
+      "id": "open-redirect-hotspot",
+      "language": "javascript",
+      "regex": "\\bredirect\\s*\\(",
+      "severity": "low",
+      "cwe": "CWE-601",
+      "owasp": "A01:2021 Broken Access Control",
+      "message": "Redirect sink should be reviewed for allowlisted destinations and auth-flow abuse."
+    },
+    {
+      "id": "express-cors-wildcard",
+      "language": "javascript",
+      "regex": "cors\\s*\\(\\s*\\{[^\\n]*origin\\s*:\\s*['\"]\\*['\"]",
+      "severity": "high",
+      "cwe": "CWE-942",
+      "owasp": "A05:2021 Security Misconfiguration",
+      "message": "Wildcard CORS in server code can expose APIs across untrusted origins."
+    },
+    {
+      "id": "python-debug-true",
+      "language": "python",
+      "regex": "debug\\s*=\\s*True",
+      "severity": "high",
+      "cwe": "CWE-489",
+      "owasp": "A05:2021 Security Misconfiguration",
+      "message": "Debug mode can expose stack traces or interactive consoles."
+    },
+    {
+      "id": "python-subprocess-shell",
+      "language": "python",
+      "regex": "subprocess\\.[a-zA-Z_]+\\([^\\n]*shell\\s*=\\s*True",
+      "severity": "high",
+      "cwe": "CWE-78",
+      "owasp": "A03:2021 Injection",
+      "message": "subprocess with shell=True is dangerous with untrusted input."
+    },
+    {
+      "id": "python-requests-ssrf-hotspot",
+      "language": "python",
+      "regex": "requests\\.(get|post|put|patch|delete)\\s*\\([^\\n]*(request\\.|args|form|json|callback|webhook|url|uri|redirect|target_url|input_url)",
+      "severity": "low",
+      "cwe": "CWE-918",
+      "owasp": "A10:2021 Server-Side Request Forgery",
+      "message": "Outbound request sink should be reviewed for SSRF controls if the destination is user-controlled."
+    },
+    {
+      "id": "python-file-open-hotspot",
+      "language": "python",
+      "regex": "\\b(send_file|FileResponse)\\s*\\(",
+      "severity": "low",
+      "cwe": "CWE-22",
+      "owasp": "A01:2021 Broken Access Control",
+      "message": "File open or response path should be reviewed for path traversal and authorization."
+    },
+    {
+      "id": "python-archive-extractall",
+      "language": "python",
+      "regex": "\\.extractall\\s*\\(",
+      "severity": "medium",
+      "cwe": "CWE-22",
+      "owasp": "A05:2021 Security Misconfiguration",
+      "message": "Archive extractall should validate member paths, symlinks, and containment before writing."
+    },
+    {
+      "id": "python-pickle-loads",
+      "language": "python",
+      "regex": "pickle\\.(load|loads)\\s*\\(",
+      "severity": "high",
+      "cwe": "CWE-502",
+      "owasp": "A08:2021 Software and Data Integrity Failures",
+      "message": "Pickle deserialization can execute code when input is attacker controlled."
+    },
+    {
+      "id": "python-yaml-load",
+      "language": "python",
+      "regex": "yaml\\.load\\s*\\(",
+      "severity": "medium",
+      "cwe": "CWE-502",
+      "owasp": "A08:2021 Software and Data Integrity Failures",
+      "message": "Use yaml.safe_load unless a safe Loader is explicitly configured."
+    },
+    {
+      "id": "python-xml-parser-hotspot",
+      "language": "python",
+      "regex": "(xml\\.etree|lxml\\.etree|fromstring\\s*\\()",
+      "severity": "low",
+      "cwe": "CWE-611",
+      "owasp": "A05:2021 Security Misconfiguration",
+      "message": "XML parser use should be reviewed for XXE/entity expansion controls when parsing untrusted input."
+    },
+    {
+      "id": "php-eval",
+      "language": "php",
+      "regex": "\\beval\\s*\\(",
+      "severity": "high",
+      "cwe": "CWE-95",
+      "owasp": "A03:2021 Injection",
+      "message": "PHP eval can execute attacker-controlled code."
+    },
+    {
+      "id": "php-unserialize",
+      "language": "php",
+      "regex": "\\bunserialize\\s*\\(",
+      "severity": "high",
+      "cwe": "CWE-502",
+      "owasp": "A08:2021 Software and Data Integrity Failures",
+      "message": "Unsafe deserialization can trigger object injection."
+    },
+    {
+      "id": "java-xml-parser-hotspot",
+      "language": "java",
+      "regex": "(DocumentBuilderFactory|SAXParserFactory|XMLInputFactory|TransformerFactory)",
+      "severity": "low",
+      "cwe": "CWE-611",
+      "owasp": "A05:2021 Security Misconfiguration",
+      "message": "Java XML parser factory should enforce XXE/entity hardening and fail closed."
+    },
+    {
+      "id": "java-process-builder-hotspot",
+      "language": "java",
+      "regex": "\\b(ProcessBuilder|Runtime\\.getRuntime\\(\\)\\.exec)\\b",
+      "severity": "medium",
+      "cwe": "CWE-78",
+      "owasp": "A03:2021 Injection",
+      "message": "Process execution should be reviewed for attacker-controlled arguments and shell interpretation."
+    }
+  ],
+  "secretPatterns": [
+    {
+      "id": "aws-access-key",
+      "regex": "AKIA[0-9A-Z]{16}",
+      "severity": "critical",
+      "message": "AWS access key-like value found."
+    },
+    {
+      "id": "github-token",
+      "regex": "gh[pousr]_[A-Za-z0-9_]{30,}",
+      "severity": "critical",
+      "message": "GitHub token-like value found."
+    },
+    {
+      "id": "slack-token",
+      "regex": "xox[baprs]-[A-Za-z0-9-]{20,}",
+      "severity": "critical",
+      "message": "Slack token-like value found."
+    },
+    {
+      "id": "openai-api-key",
+      "regex": "sk-[A-Za-z0-9_-]{24,}",
+      "severity": "critical",
+      "message": "OpenAI API key-like value found."
+    },
+    {
+      "id": "google-api-key",
+      "regex": "AIza[0-9A-Za-z_-]{35}",
+      "severity": "critical",
+      "message": "Google API key-like value found."
+    },
+    {
+      "id": "stripe-live-secret",
+      "regex": "sk_live_[0-9A-Za-z]{20,}",
+      "severity": "critical",
+      "message": "Stripe live secret key-like value found."
+    },
+    {
+      "id": "jwt-token",
+      "regex": "eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}",
+      "severity": "high",
+      "message": "JWT-like token found."
+    },
+    {
+      "id": "private-key",
+      "regex": "-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----",
+      "severity": "critical",
+      "message": "Private key material found."
+    },
+    {
+      "id": "generic-secret-assignment",
+      "regex": "(api[_-]?key|secret|token|password|private[_-]?key)\\s*[:=]\\s*['\"][^'\"\\s]{16,}['\"]",
+      "flags": "i",
+      "severity": "high",
+      "message": "Secret-like assignment found."
+    }
+  ],
+  "exposurePaths": [
+    {
+      "path": "/.env",
+      "severity": "critical",
+      "message": "Environment file may be publicly exposed."
+    },
+    {
+      "path": "/.git/config",
+      "severity": "critical",
+      "message": "Git metadata may be publicly exposed."
+    },
+    {
+      "path": "/server-status",
+      "severity": "medium",
+      "message": "Server status endpoint may disclose internal details."
+    },
+    {
+      "path": "/debug",
+      "severity": "high",
+      "message": "Debug endpoint may be exposed."
+    },
+    {
+      "path": "/phpinfo.php",
+      "severity": "high",
+      "message": "phpinfo endpoint may expose sensitive configuration."
+    },
+    {
+      "path": "/.well-known/security.txt",
+      "severity": "info",
+      "message": "Security contact file check."
+    }
+  ]
+}
