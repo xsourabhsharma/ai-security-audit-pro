@@ -56,25 +56,25 @@ node scripts/security-audit.mjs --target . --out security-audit-report.md --html
 
 An agent can run that command, read the report, validate the evidence, summarize the risk, and tell you what still needs manual testing.
 
-## Install From Registries
+## Download And Install
 
-Use npm when you want the CLI available to any shell-capable agent:
+The package is published on npm:
+
+- npm package: [ai-security-audit-pro](https://www.npmjs.com/package/ai-security-audit-pro)
+- GitHub source: [xsourabhsharma/ai-security-audit-pro](https://github.com/xsourabhsharma/ai-security-audit-pro)
+
+Install it globally when you want the CLI available to Codex, Claude Code, Gemini CLI, OpenCode, Hermes, OpenClaw, or any other shell-capable agent:
 
 ```bash
 npm install -g ai-security-audit-pro
 security-audit-pro --target . --out security-audit-report.md --html-out security-audit-report.html
 ```
 
-Use ClawHub when you want OpenClaw to install the plugin from its native registry:
+ClawHub support is packaged through `openclaw.plugin.json`, but the ClawHub listing is pending registry approval/publish. After it is visible on ClawHub, OpenClaw users will be able to install it with:
 
 ```bash
 openclaw plugins install clawhub:ai-security-audit-pro
 ```
-
-Registry pages:
-
-- npm: [ai-security-audit-pro](https://www.npmjs.com/package/ai-security-audit-pro)
-- ClawHub: [ai-security-audit-pro](https://clawhub.ai/plugins/ai-security-audit-pro)
 
 ## Supported Agents
 
@@ -143,7 +143,7 @@ Run the local engine from source:
 node scripts/security-audit.mjs --target . --out security-audit-report.md --html-out security-audit-report.html
 ```
 
-OpenClaw path from ClawHub:
+OpenClaw path, once the ClawHub listing is live:
 
 ```bash
 openclaw plugins install clawhub:ai-security-audit-pro
