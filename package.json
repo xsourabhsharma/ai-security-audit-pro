@@ -1,7 +1,7 @@
 {
   "name": "ai-security-audit-pro",
   "version": "0.7.0",
-  "description": "Universal AI-agent security audit plugin and CLI with OWASP-mapped reports.",
+  "description": "Universal security-audit plugin and CLI engine for AI agents with OWASP-mapped reports.",
   "type": "module",
   "bin": {
     "security-audit-pro": "./scripts/security-audit.mjs"
@@ -40,7 +40,9 @@
     "dast",
     "web-security",
     "agent-plugin",
-    "ai-plugin"
+    "ai-plugin",
+    "security-plugin",
+    "ai-agents"
   ],
   "author": "Security Audit Pro maintainers",
   "license": "MIT",

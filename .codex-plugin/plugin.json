@@ -1,7 +1,7 @@
 {
   "name": "security-audit-pro",
   "version": "0.7.0",
-  "description": "Universal AI-agent security audit plugin for defensive website, API, and codebase audits with professional OWASP-mapped reports.",
+  "description": "Universal security-audit plugin and CLI engine for AI agents, built for defensive website, API, and codebase audits with professional OWASP-mapped reports.",
   "author": {
     "name": "Security Audit Pro maintainers",
     "url": "https://github.com/xsourabhsharma/ai-security-audit-pro"
@@ -21,7 +21,7 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "AI Security Audit Pro Plugin",
-    "shortDescription": "Powerful defensive security audit plugin for codebases, websites, and APIs.",
+    "shortDescription": "Powerful AI-agent security audit plugin for codebases, websites, and APIs.",
     "longDescription": "Runs a defensive, evidence-based security audit workflow across local source code, dependencies, secrets, HTTP security headers, TLS posture, CORS behavior, HTTP method exposure, API schema discovery, crawler-discovered surfaces, bounded content discovery, authenticated/business-logic scope planning, PDF/HTML reporting, and optional authorized DAST tooling. Reports use a professional bug-analysis format with assessment conclusion, confirmed/likely/needs-validation status, evidence, risk, impact, remediation, safe PoC/validation steps, reviewed surfaces, and coverage matrix. HTML output is a self-contained executive dashboard with severity/status cards and expandable findings. Built around OWASP ASVS, WSTG, OWASP Top 10, API Security Top 10, Semgrep, OSV, Gitleaks, TruffleHog, httpx, SSLyze, katana, ffuf, Nuclei, OWASP ZAP Docker baseline, and bundled standalone OWASP ZAP Quick Start scans.",
     "developerName": "Security Audit Pro maintainers",
     "category": "Developer Tools",
