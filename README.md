@@ -1,6 +1,6 @@
 # AI Security Audit Pro Plugin
 
-> Universal security-audit plugin for AI agents. Turn Codex, Claude Code, Gemini CLI, Antigravity, OpenCode, Hermes, OpenClaw, or any shell-capable AI tool into a structured defensive security-audit operator.
+> A security-audit plugin that AI agents can actually run.
 
 ![CI](https://github.com/xsourabhsharma/ai-security-audit-pro/actions/workflows/ci.yml/badge.svg)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
@@ -8,90 +8,97 @@
 ![OWASP](https://img.shields.io/badge/OWASP-ASVS%20%7C%20Top%2010%20%7C%20WSTG-111827.svg)
 ![Plugin Ready](https://img.shields.io/badge/plugin--ready-Codex%20%7C%20Claude%20%7C%20Gemini%20%7C%20OpenCode%20%7C%20Hermes%20%7C%20OpenClaw-0f766e.svg)
 
-AI Security Audit Pro Plugin is a powerful defensive security-audit plugin and CLI engine for codebases, websites, and APIs. It gives AI agents a repeatable workflow for scoped security testing, scanner orchestration, evidence collection, false-positive triage, and professional report generation.
+AI Security Audit Pro Plugin is a defensive security-audit plugin and CLI engine for AI coding agents. It gives Codex, Claude Code, Gemini CLI, Google Antigravity, OpenCode, Hermes, OpenClaw, and other shell-capable AI tools a serious workflow for auditing codebases, websites, and APIs.
 
-It is built for AI-assisted security work where quality matters: exact scope, clear authorization, redacted evidence, OWASP mapping, confidence levels, safe validation steps, and clean reports that can be reviewed by engineers or clients.
+It is built for people who want their agent to do more than produce generic advice. A good run should inspect the target, use the right tools, capture evidence, separate real findings from scanner noise, and produce a report someone can actually review.
 
-## Why This Plugin Exists
+## The Idea
 
-Most AI agents can read code. That does not make them reliable security auditors.
+AI agents are useful at security work, but only when they have a disciplined process.
 
-Security audits need a workflow:
+Without structure, they tend to:
 
-- Scope the exact target.
-- Confirm authorization before active testing.
-- Check code, dependencies, secrets, headers, TLS, CORS, cookies, routes, APIs, and exposed paths.
-- Run optional scanners without turning raw scanner noise into fake findings.
-- Separate confirmed findings from likely findings and needs-validation findings.
-- Produce a report with evidence, risk, impact, remediation, and residual risk.
+- repeat the same low-value header findings,
+- overstate scanner output,
+- miss scope and authorization details,
+- mix real findings with guesses,
+- and produce reports that are hard to trust.
 
-AI Security Audit Pro Plugin packages that workflow so any supported agent can use it consistently.
+This plugin gives the agent a safer, repeatable path:
+
+1. Understand the target.
+2. Run local or URL-based audit checks.
+3. Use optional scanners when they are installed and authorized.
+4. Write down what was reviewed and what was skipped.
+5. Mark findings as `Confirmed`, `Likely`, or `Needs validation`.
+6. Generate Markdown, HTML, PDF, or JSON output.
+
+That is the point of this repo: not just "run a scanner," but help an AI agent behave more like a careful security reviewer.
 
 ## Plugin First, CLI Powered
 
-AI platforms do not share one plugin standard. Codex, Claude Code, Gemini CLI, OpenCode, Hermes, OpenClaw, and Antigravity all load tools differently.
+Every AI tool has a different plugin system. Codex, Claude Code, Gemini CLI, Antigravity, OpenCode, Hermes, and OpenClaw do not all load the same package format.
 
-This repository solves that by shipping two layers:
+So AI Security Audit Pro ships as both:
 
-| Layer | Purpose |
+| Part | What it does |
 |---|---|
-| Plugin and agent instructions | Tell AI tools when and how to use Security Audit Pro. |
-| Universal CLI engine | Provides one stable command interface every shell-capable agent can run. |
+| Plugin files | Give agents the instructions, skills, and adapter docs they need. |
+| CLI engine | Gives every shell-capable agent one stable way to run the audit. |
 
-The command line is not a fallback. It is the plugin runtime.
+The CLI is the runtime interface of the plugin:
 
 ```bash
 node scripts/security-audit.mjs --target . --out security-audit-report.md --html-out security-audit-report.html
 ```
 
-Any AI agent can call that command, inspect the generated report, validate the evidence, and explain the findings.
+An agent can run that command, read the report, validate the evidence, summarize the risk, and tell you what still needs manual testing.
 
-## Supported AI Agents
+## Supported Agents
 
-| Agent or tool | Integration included |
+| Agent or tool | Included support |
 |---|---|
 | Codex | `.codex-plugin/plugin.json`, `skills/security-audit/SKILL.md`, `AGENTS.md` |
 | Claude Code | `.claude-plugin/plugin.json`, `skills/security-audit/SKILL.md`, `CLAUDE.md` |
-| Gemini CLI | `GEMINI.md` and CLI workflow |
+| Gemini CLI | `GEMINI.md` and the CLI workflow |
 | Google Antigravity | `GEMINI.md` or `agent-adapters/antigravity.md` |
 | OpenCode | `AGENTS.md` or `agent-adapters/opencode.md` |
-| Hermes | `agent-adapters/hermes.md` and CLI command-tool workflow |
-| OpenClaw | `agent-adapters/openclaw.md` and CLI workflow |
-| Any other AI tool | Universal prompt plus CLI command interface |
+| Hermes | `agent-adapters/hermes.md` and the CLI as a local command tool |
+| OpenClaw | `agent-adapters/openclaw.md` and the CLI workflow |
+| Any other AI agent | Use the universal prompt and CLI command |
 
-Universal prompt for any AI agent:
+Universal prompt:
 
 ```text
 Use AI Security Audit Pro Plugin from this repository. Run node scripts/security-audit.mjs against the exact target. Keep the audit defensive, authorized, and non-destructive. Redact secrets. Separate confirmed findings from likely or needs-validation findings. Produce Markdown plus HTML when requested, and explain skipped checks or residual risk.
 ```
 
-## What It Audits
+## What It Can Check
 
-| Area | Checks |
+| Surface | Examples |
 |---|---|
 | Source code | Injection hotspots, unsafe execution, XSS sinks, SSRF hotspots, file access, deserialization, XML parser risks, auth review hotspots. |
-| Secrets | Redacted checks for API keys, tokens, private keys, JWTs, cloud keys, and secret-like assignments. |
+| Secrets | API keys, tokens, private keys, JWTs, cloud keys, and secret-like assignments with redacted evidence. |
 | Dependencies | npm, pnpm, yarn, pip-audit, Bandit, OSV-Scanner, govulncheck, cargo-audit, composer audit when available. |
 | Websites | Headers, TLS, cookies, CORS, HTTP methods, exposed files, debug endpoints, API docs, security.txt. |
-| APIs | OpenAPI/Swagger/GraphQL/Postman artifact discovery, route inventory, authorization hotspots. |
-| Active scans | Authorized httpx, SSLyze, katana, ffuf, Nuclei, and OWASP ZAP orchestration when installed. |
-| Business logic | Scope template for roles, object authorization, uploads, quotas, sharing, admin actions, and workflow abuse testing. |
+| APIs | OpenAPI, Swagger, GraphQL, Postman artifacts, route inventory, authorization hotspots. |
+| Active scanning | Authorized httpx, SSLyze, katana, ffuf, Nuclei, and OWASP ZAP orchestration when installed. |
+| Business logic | Role testing, object authorization, uploads, quotas, sharing, admin flows, and workflow-abuse planning through the scope template. |
 | Reports | Markdown, HTML dashboard, PDF, and JSON. |
 
-## What Makes It Powerful
+## What Makes It Useful
 
-- **Universal agent compatibility:** one plugin package for many AI tools.
-- **Professional bug-analysis output:** not just a scanner dump.
-- **OWASP-aligned findings:** Top 10, API Top 10, ASVS, WSTG, CWE where practical.
-- **Evidence-driven triage:** confirmed, likely, needs-validation, skipped, and false-positive-aware output.
-- **Safe PoC guidance:** validation steps designed for defensive testing.
-- **External scanner orchestration:** use serious tools when they are installed, skip cleanly when they are not.
-- **JSON for automation:** agents can parse reports, rank findings, compare scans, and build workflows.
-- **Local and hosted targets:** codebase scans, localhost apps, staging sites, and authorized public targets.
+- It is agent-neutral. The same repo can guide Codex, Claude Code, Gemini CLI, OpenCode, Hermes, OpenClaw, and other tools.
+- It gives agents a real command to run instead of relying on vague prompt memory.
+- It records skipped checks instead of pretending coverage happened.
+- It encourages validation instead of treating every scanner result as a confirmed bug.
+- It produces reports with impact, evidence, remediation, OWASP/CWE mapping, and safe validation steps.
+- It can be used on local projects, localhost apps, staging sites, and authorized public targets.
+- It supports JSON output so agents can parse results and build follow-up workflows.
 
-No honest tool can promise to find every vulnerability. This plugin is designed to find high-signal issues, preserve evidence, and make remaining gaps explicit.
+No honest security tool can promise to find every vulnerability. This plugin is designed to find strong signals, preserve evidence, and make the remaining gaps visible.
 
-## Install
+## Quick Start
 
 Clone and verify:
 
@@ -99,6 +106,12 @@ Clone and verify:
 git clone https://github.com/xsourabhsharma/ai-security-audit-pro.git
 cd ai-security-audit-pro
 npm test
+```
+
+Run a local audit:
+
+```bash
+node scripts/security-audit.mjs --target . --out security-audit-report.md --html-out security-audit-report.html
 ```
 
 Install globally from GitHub:
@@ -114,15 +127,15 @@ Requirements:
 - Optional: Python plus ReportLab for PDF output.
 - Optional scanner tools on PATH for deeper coverage.
 
-## Commands Agents Can Run
+## Common Audit Commands
 
-Local project audit:
+Local project:
 
 ```bash
 node scripts/security-audit.mjs --target . --out security-audit-report.md --html-out security-audit-report.html
 ```
 
-Authorized website audit:
+Authorized website:
 
 ```bash
 node scripts/security-audit.mjs --target https://staging.example.com --mode standard --authorized --out report.md --html-out report.html
@@ -134,7 +147,7 @@ Deep authorized active scan:
 node scripts/security-audit.mjs --target https://staging.example.com --mode active --profile deep --authorized --scope-file templates/authenticated-audit-scope.md --out report.md --html-out report.html --pdf-out report.pdf
 ```
 
-Machine-readable JSON for AI workflows:
+JSON for agent workflows:
 
 ```bash
 node scripts/security-audit.mjs --target . --json --out report.json
@@ -150,13 +163,13 @@ node scripts/security-audit.mjs --target . --json --out report.json
 
 Active profiles:
 
-- `safe`: lower volume.
+- `safe`: lower request volume.
 - `balanced`: default profile.
 - `deep`: broader non-destructive coverage for explicitly authorized targets.
 
-## Report Output
+## What A Report Looks Like
 
-Reports are designed to look like professional security assessment deliverables.
+The output is meant to read like a real security handoff, not a raw tool dump.
 
 ```text
 Bug Analysis Report
@@ -176,7 +189,7 @@ Bug Analysis Report
   Skipped Checks And Residual Risk
 ```
 
-Finding entries include:
+Each finding can include:
 
 ```text
 Status: Confirmed / Likely / Needs validation
@@ -214,7 +227,7 @@ Supported optional tools:
 - OWASP ZAP
 - Docker for ZAP Docker baseline
 
-When tools are missing, the report records that clearly instead of pretending coverage happened.
+When a tool is missing, the report says so clearly.
 
 ## Repository Layout
 
@@ -234,7 +247,7 @@ ai-security-audit-pro/
   GEMINI.md
 ```
 
-## Safety
+## Responsible Use
 
 Use this plugin only on systems you own or are explicitly authorized to test.
 
