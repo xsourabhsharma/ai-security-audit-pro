@@ -103,6 +103,7 @@ Use AI Security Audit Pro Plugin from this repository. Run node scripts/security
 | Secrets | API keys, tokens, private keys, JWTs, cloud keys, and secret-like assignments with redacted evidence. |
 | Dependencies | npm, pnpm, yarn, pip-audit, Bandit, OSV-Scanner, govulncheck, cargo-audit, composer audit when available. |
 | Websites | Headers, TLS, cookies, CORS, HTTP methods, exposed files, debug endpoints, API docs, security.txt. |
+| SPA bundle risks | Lazy-loaded JavaScript chunk discovery, production debug logging, endpoint-map exposure, and client-side password-transform signals. |
 | APIs | OpenAPI, Swagger, GraphQL, Postman artifacts, route inventory, authorization hotspots. |
 | Active scanning | Authorized httpx, SSLyze, katana, ffuf, Nuclei, and OWASP ZAP orchestration when installed. |
 | Business logic | Role testing, object authorization, uploads, quotas, sharing, admin flows, and workflow-abuse planning through the scope template. |
@@ -204,6 +205,7 @@ Bug Analysis Report
   Assessment Conclusion
   Finding Overview
   Key Risk Summary
+  Confirmed Vulnerabilities / Risks
   Scope And Authorization
   Auth And Business Logic Scope
   Critical Severity Findings

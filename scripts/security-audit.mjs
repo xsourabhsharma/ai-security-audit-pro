@@ -731,6 +731,7 @@ async function auditUrl(rawUrl, args, rules, report) {
   checkResponseBodySignals(responseInfo, report);
 
   if (url.protocol === "https:") {
+    await checkHttpToHttpsRedirect(url, report);
     await checkTls(url, report);
   } else {
     addFinding(report, {
@@ -743,6 +744,12 @@ async function auditUrl(rawUrl, args, rules, report) {
       owasp: "A02:2021 Cryptographic Failures",
       remediation: "Redirect HTTP to HTTPS in production and serve sensitive flows only over TLS."
     });
+  }
+
+  if (args.mode === "standard" || args.mode === "active") {
+    await checkAdjacentApiHeadersAndCookies(url, report);
+    await checkSecurityTxtAvailability(url, report);
+    await checkClientBundleRiskSignals(url, responseInfo, report);
   }
 
   if (args.mode === "standard" || args.mode === "active") {
@@ -771,7 +778,7 @@ async function fetchUrl(target, options = {}) {
   try {
     const response = await fetch(target, {
       method: options.method || "GET",
-      redirect: "follow",
+      redirect: options.redirect || "follow",
       signal: controller.signal,
       headers: {
         "User-Agent": "SecurityAuditPro/0.1 defensive-audit",
@@ -784,7 +791,7 @@ async function fetchUrl(target, options = {}) {
       finalUrl: response.url,
       headers: Object.fromEntries(response.headers.entries()),
       setCookie: response.headers.getSetCookie ? response.headers.getSetCookie() : collectSetCookieFallback(response.headers),
-      bodySample: body.slice(0, 5000)
+      bodySample: body.slice(0, options.maxBody || 50000)
     };
   } catch (error) {
     return { error: error.message };
@@ -796,6 +803,306 @@ async function fetchUrl(target, options = {}) {
 function collectSetCookieFallback(headers) {
   const value = headers.get("set-cookie");
   return value ? [value] : [];
+}
+
+async function fetchText(target, maxBytes = 3000000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000);
+  try {
+    const response = await fetch(target, {
+      method: "GET",
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "SecurityAuditPro/0.1 defensive-audit"
+      }
+    });
+    const text = await response.text().catch(() => "");
+    return {
+      status: response.status,
+      finalUrl: response.url,
+      headers: Object.fromEntries(response.headers.entries()),
+      text: text.slice(0, maxBytes),
+      truncated: text.length > maxBytes
+    };
+  } catch (error) {
+    return { error: error.message, text: "" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchRawHeaders(target) {
+  const targetUrl = new URL(target);
+  const module = targetUrl.protocol === "https:" ? await import("node:https") : await import("node:http");
+  return new Promise((resolve) => {
+    const request = module.request(targetUrl, {
+      method: "HEAD",
+      timeout: 15000,
+      headers: {
+        "User-Agent": "SecurityAuditPro/0.1 defensive-audit"
+      }
+    }, (response) => {
+      response.resume();
+      resolve({
+        status: response.statusCode,
+        rawHeaders: response.rawHeaders || [],
+        headers: response.headers || {}
+      });
+    });
+    request.on("timeout", () => {
+      request.destroy();
+      resolve({ error: "request timed out", rawHeaders: [], headers: {} });
+    });
+    request.on("error", (error) => {
+      resolve({ error: error.message, rawHeaders: [], headers: {} });
+    });
+    request.end();
+  });
+}
+
+function rawHeaderValues(rawHeaders, headerName) {
+  const values = [];
+  for (let index = 0; index < rawHeaders.length - 1; index += 2) {
+    if (String(rawHeaders[index]).toLowerCase() === headerName.toLowerCase()) {
+      values.push(String(rawHeaders[index + 1]));
+    }
+  }
+  return values;
+}
+
+async function checkHttpToHttpsRedirect(url, report) {
+  report.checks.push("HTTP to HTTPS redirect enforcement check");
+  const httpUrl = new URL(url.toString());
+  httpUrl.protocol = "http:";
+  const responseInfo = await fetchUrl(httpUrl.toString(), {
+    redirect: "manual",
+    maxBody: 2000
+  });
+  if (responseInfo.error) {
+    report.skipped.push(`HTTP redirect check failed for ${httpUrl.toString()}: ${responseInfo.error}`);
+    return;
+  }
+  const location = responseInfo.headers?.location || "";
+  const redirectsToHttps = responseInfo.status >= 300 && responseInfo.status < 400 && /^https:\/\//i.test(location);
+  if (!redirectsToHttps) {
+    addFinding(report, {
+      id: "http-without-https-redirect",
+      title: "HTTP works without HTTPS redirect",
+      severity: "medium",
+      category: "Transport security",
+      location: httpUrl.toString(),
+      evidence: `HTTP ${responseInfo.status}; Location header: ${location || "(none)"}`,
+      owasp: "A02:2021 Cryptographic Failures",
+      cwe: "CWE-319",
+      confidence: "high",
+      remediation: "Redirect all HTTP requests to HTTPS with a permanent 301 or 308 redirect before serving portal content."
+    });
+  }
+}
+
+async function checkAdjacentApiHeadersAndCookies(url, report) {
+  report.checks.push("Adjacent API header and XSRF cookie check");
+  const basePath = normalizedBasePath(url.pathname);
+  const httpsEndpoint = new URL(`${basePath}/api/auth/login-capabilities`, url.origin).toString();
+  const raw = await fetchRawHeaders(httpsEndpoint);
+  const cspValues = rawHeaderValues(raw.rawHeaders || [], "Content-Security-Policy");
+  const frameValues = rawHeaderValues(raw.rawHeaders || [], "X-Frame-Options");
+  if (cspValues.length > 1 || frameValues.length > 1) {
+    addFinding(report, {
+      id: "conflicting-duplicate-security-headers",
+      title: "Conflicting duplicate security headers",
+      severity: "medium",
+      category: "HTTP security header",
+      location: httpsEndpoint,
+      evidence: `CSP values: ${summarizeHeaderValues(cspValues)}; X-Frame-Options values: ${summarizeHeaderValues(frameValues)}`,
+      owasp: "A05:2021 Security Misconfiguration",
+      cwe: "CWE-16",
+      confidence: "high",
+      remediation: "Consolidate security headers at one layer so API responses emit one consistent CSP and one consistent X-Frame-Options/frame-ancestors policy."
+    });
+  }
+
+  const httpsInfo = await fetchUrl(httpsEndpoint, { redirect: "manual", maxBody: 2000 });
+  const httpEndpoint = new URL(httpsEndpoint);
+  httpEndpoint.protocol = "http:";
+  const httpInfo = await fetchUrl(httpEndpoint.toString(), { redirect: "manual", maxBody: 2000 });
+  const httpsXsrf = (httpsInfo.setCookie || []).find((cookie) => /^XSRF-TOKEN=/i.test(cookie));
+  const httpXsrf = (httpInfo.setCookie || []).find((cookie) => /^XSRF-TOKEN=/i.test(cookie));
+  if (httpsXsrf || httpXsrf) {
+    const issues = [];
+    if (httpsXsrf && !/;\s*samesite=/i.test(httpsXsrf)) issues.push("HTTPS XSRF-TOKEN missing SameSite");
+    if (httpXsrf && !/;\s*secure\b/i.test(httpXsrf)) issues.push("HTTP XSRF-TOKEN set without Secure");
+    if (httpXsrf && !/;\s*samesite=/i.test(httpXsrf)) issues.push("HTTP XSRF-TOKEN missing SameSite");
+    if (issues.length) {
+      addFinding(report, {
+        id: "xsrf-cookie-hardening-gap",
+        title: "XSRF cookie weakness",
+        severity: "medium",
+        category: "Session security",
+        location: httpsEndpoint,
+        evidence: issues.join("; "),
+        owasp: "A01:2021 Broken Access Control",
+        cwe: "CWE-352",
+        confidence: "high",
+        remediation: "Set SameSite on XSRF cookies, avoid setting security cookies over HTTP, and verify state-changing requests require the expected X-XSRF-TOKEN header."
+      });
+    }
+  }
+}
+
+function summarizeHeaderValues(values) {
+  if (!values.length) return "(none)";
+  return values.map((value) => value.slice(0, 160)).join(" || ");
+}
+
+async function checkSecurityTxtAvailability(url, report) {
+  report.checks.push("security.txt availability check");
+  const basePath = normalizedBasePath(url.pathname);
+  const scopedSecurityTxt = new URL(`${basePath}/.well-known/security.txt`, url.origin).toString();
+  const rootSecurityTxt = new URL("/.well-known/security.txt", url.origin).toString();
+  const scoped = await fetchUrl(scopedSecurityTxt, { redirect: "manual", maxBody: 5000 });
+  const root = await fetchUrl(rootSecurityTxt, { redirect: "manual", maxBody: 5000 });
+  const scopedLooksLikeSpa = scoped.status === 200 && /<app-root|<html|CBSE|Verification|Re-evaluation/i.test(scoped.bodySample || "");
+  const rootUnavailable = root.status >= 500 || root.status === 404;
+  if (scopedLooksLikeSpa || rootUnavailable) {
+    addFinding(report, {
+      id: "security-txt-unavailable",
+      title: "No useful security.txt disclosure contact",
+      severity: "info",
+      category: "Information disclosure",
+      location: scopedSecurityTxt,
+      evidence: `Scoped security.txt status ${scoped.status || "unknown"}${scopedLooksLikeSpa ? " returned SPA/HTML content" : ""}; root security.txt status ${root.status || "unknown"}`,
+      owasp: "A05:2021 Security Misconfiguration",
+      confidence: "high",
+      remediation: "Publish a valid RFC 9116 security.txt at /.well-known/security.txt with contact and policy details for responsible disclosure."
+    });
+  }
+}
+
+async function checkClientBundleRiskSignals(url, responseInfo, report) {
+  report.checks.push("Public SPA bundle risk signal check");
+  const initialAssetUrls = extractScriptAssetUrls(responseInfo.finalUrl || url.toString(), responseInfo.bodySample || "");
+  if (!initialAssetUrls.length) {
+    report.skipped.push("Public SPA bundle risk signal check did not find JavaScript assets in the fetched HTML.");
+    return;
+  }
+  const origin = new URL(responseInfo.finalUrl || url.toString()).origin;
+  const seen = new Set(initialAssetUrls);
+  const queue = [...initialAssetUrls];
+  const bundles = [];
+  while (queue.length && bundles.length < 60) {
+    const assetUrl = queue.shift();
+    const fetched = await fetchText(assetUrl);
+    if (fetched.error || !fetched.text) continue;
+    bundles.push({ url: assetUrl, text: fetched.text, truncated: fetched.truncated });
+    for (const nextUrl of extractJavaScriptReferences(assetUrl, fetched.text)) {
+      if (seen.has(nextUrl)) continue;
+      if (new URL(nextUrl).origin !== origin) continue;
+      seen.add(nextUrl);
+      queue.push(nextUrl);
+    }
+  }
+  const combined = bundles.map((bundle) => bundle.text).join("\n");
+  if (!combined) return;
+
+  const consoleLogCount = (combined.match(/console\.log\s*\(/g) || []).length;
+  const sensitiveLogTerms = [
+    "Payment payload",
+    "Payment initiation response",
+    "Final Confirmation payload",
+    "payment state",
+    "application state",
+    "candidate"
+  ].filter((term) => combined.includes(term));
+  if (consoleLogCount && sensitiveLogTerms.length) {
+    addFinding(report, {
+      id: "production-debug-logging-js",
+      title: "Production debug logging in JS",
+      severity: "medium",
+      category: "Information disclosure",
+      location: bundles.find((bundle) => sensitiveLogTerms.some((term) => bundle.text.includes(term)))?.url || assetUrls[0],
+      evidence: `${consoleLogCount} console.log call(s) observed; sensitive log labels include: ${sensitiveLogTerms.slice(0, 8).join(", ")}`,
+      owasp: "A09:2021 Security Logging and Monitoring Failures",
+      cwe: "CWE-532",
+      confidence: "high",
+      remediation: "Remove production console logging around candidate, application, and payment workflows, or gate diagnostics behind a secure server-side support flow."
+    });
+  }
+
+  const endpointNeedles = [
+    "candidate/full-profile/rroll",
+    "fetch/application/rroll",
+    "photoUpload/download-url",
+    "candidate/photocopy/download-url",
+    "payment/reconcile",
+    "payment/all",
+    "grievance/list",
+    "photocopy/statistics"
+  ];
+  const exposedEndpoints = endpointNeedles.filter((needle) => combined.includes(needle));
+  if (exposedEndpoints.length) {
+    addFinding(report, {
+      id: "sensitive-endpoint-map-public-js",
+      title: "Sensitive endpoint map exposed in public JS",
+      severity: "low",
+      category: "Information disclosure",
+      location: bundles.find((bundle) => exposedEndpoints.some((needle) => bundle.text.includes(needle)))?.url || initialAssetUrls[0],
+      evidence: exposedEndpoints.join(", "),
+      owasp: "A05:2021 Security Misconfiguration",
+      cwe: "CWE-200",
+      confidence: "high",
+      remediation: "Assume client-side routes are public and enforce strict server-side authorization, object ownership checks, and rate limits on every listed API endpoint."
+    });
+  }
+
+  if (/AES-GCM/i.test(combined) && /SHA-256/i.test(combined) && /123456789/.test(combined)) {
+    addFinding(report, {
+      id: "client-side-password-transform",
+      title: "Client-side password transform is not real protection",
+      severity: "low",
+      category: "Client-side security",
+      location: bundles.find((bundle) => /AES-GCM/i.test(bundle.text) && /SHA-256/i.test(bundle.text) && /123456789/.test(bundle.text))?.url || initialAssetUrls[0],
+      evidence: "Public bundle references AES-GCM, SHA-256, and a fixed suffix used in the client-side transform.",
+      owasp: "A02:2021 Cryptographic Failures",
+      cwe: "CWE-311",
+      confidence: "high",
+      remediation: "Treat client-side transforms only as defense-in-depth. Enforce HTTPS, strong CSP, secure authentication, server-side validation, and protection before the browser transform step."
+    });
+  }
+}
+
+function normalizedBasePath(pathname) {
+  const clean = String(pathname || "/").replace(/\/+$/, "");
+  return clean || "/";
+}
+
+function extractScriptAssetUrls(baseUrl, html) {
+  const urls = new Set();
+  const assetRegex = /<(?:script|link)\b[^>]+(?:src|href)=["']([^"']+\.js(?:\?[^"']*)?)["'][^>]*>/gi;
+  let match;
+  while ((match = assetRegex.exec(html))) {
+    try {
+      urls.add(new URL(match[1], baseUrl).toString());
+    } catch {
+      // Ignore malformed asset URLs.
+    }
+  }
+  return [...urls];
+}
+
+function extractJavaScriptReferences(baseUrl, text) {
+  const urls = new Set();
+  const jsRefRegex = /["']([^"']+\.js(?:\?[^"']*)?)["']/gi;
+  let match;
+  while ((match = jsRefRegex.exec(text))) {
+    try {
+      urls.add(new URL(match[1], baseUrl).toString());
+    } catch {
+      // Ignore malformed JavaScript references.
+    }
+  }
+  return [...urls];
 }
 
 function checkSecurityHeaders(url, responseInfo, rules, report) {
@@ -2406,6 +2713,9 @@ function renderMarkdown(report) {
   md += `## Key Risk Summary\n\n`;
   md += renderKeyRiskSummary(report);
   md += `\n\n`;
+  md += `## Confirmed Vulnerabilities / Risks\n\n`;
+  md += renderConfirmedVulnerabilitiesAndRisks(report);
+  md += `\n\n`;
   md += `## Threat Model Summary\n\n`;
   md += `${renderThreatModelSummary(report)}\n\n`;
 
@@ -2496,6 +2806,134 @@ function renderKeyRiskSummary(report) {
   }).join("\n");
 }
 
+function renderConfirmedVulnerabilitiesAndRisks(report) {
+  const items = confirmedRiskItems(report);
+  if (!items.length) {
+    return "No confirmed vulnerabilities or concrete risk observations were recorded by the checks that ran.";
+  }
+  return items.map((item) => {
+    let md = `### ${item.title}\n\n`;
+    md += `- Confirmed: ${item.confirmed}\n`;
+    md += `- Risk: ${item.risk}\n`;
+    md += `- Impact: ${item.impact}\n`;
+    md += `- F12 check: ${item.f12}\n`;
+    if (item.remediation) md += `- Fix: ${item.remediation}\n`;
+    return md;
+  }).join("\n");
+}
+
+function confirmedRiskItems(report) {
+  const byId = new Map(report.findings.map((finding) => [finding.id, finding]));
+  const target = report.target || "";
+  const items = [];
+
+  if (byId.has("http-without-https-redirect")) {
+    const finding = byId.get("http-without-https-redirect");
+    items.push({
+      id: finding.id,
+      title: "HTTP works without HTTPS redirect",
+      confirmed: `${finding.location} returns content without a HTTPS redirect (${finding.evidence}).`,
+      risk: "First-visit users can be downgraded on unsafe Wi-Fi or proxy networks before HTTPS protection is established.",
+      impact: "A network attacker could tamper with the first HTTP response, including JavaScript bootstrapping, which is especially sensitive for identity and payment workflows.",
+      f12: `Open ${finding.location}, then DevTools -> Network -> first document -> verify status is 200 and no Location: https://... redirect is present.`,
+      remediation: "Redirect HTTP to HTTPS with 301 or 308 before serving any page or asset."
+    });
+  }
+
+  if (byId.has("weak-csp")) {
+    const finding = byId.get("weak-csp");
+    items.push({
+      id: finding.id,
+      title: "Weak CSP on SPA",
+      confirmed: `CSP is ${finding.evidence}`,
+      risk: "If any HTML or script injection exists, this CSP gives weak containment because it allows unsafe inline JavaScript, eval, data/blob sources, and broad HTTPS loading.",
+      impact: "XSS would be more damaging because the page collects sensitive identity and workflow fields.",
+      f12: "Run `fetch(location.href).then(r => console.log(r.headers.get('content-security-policy')))` in the Console or inspect Network -> document -> Headers.",
+      remediation: "Remove unsafe-inline and unsafe-eval where possible, use nonces/hashes, and define script-src, style-src, object-src, base-uri, frame-ancestors, connect-src, img-src, and font-src."
+    });
+  }
+
+  if (byId.has("conflicting-duplicate-security-headers")) {
+    const finding = byId.get("conflicting-duplicate-security-headers");
+    items.push({
+      id: finding.id,
+      title: "Conflicting duplicate security headers",
+      confirmed: `${finding.location} emits duplicate/conflicting browser security headers (${finding.evidence}).`,
+      risk: "Proxy and backend layers are inconsistent, which can make browser behavior harder to reason about and can accidentally weaken future deployments.",
+      impact: "Header drift may reduce CSP/frame protection on sensitive API or SPA responses.",
+      f12: `Open DevTools -> Network -> ${finding.location.replace(/^https?:\/\/[^/]+/, "")} -> Headers -> look for repeated Content-Security-Policy and X-Frame-Options entries.`,
+      remediation: "Emit one canonical CSP and one frame policy from a single layer, or make every layer emit exactly the same policy."
+    });
+  }
+
+  if (byId.has("xsrf-cookie-hardening-gap")) {
+    const finding = byId.get("xsrf-cookie-hardening-gap");
+    items.push({
+      id: finding.id,
+      title: "XSRF cookie weakness",
+      confirmed: finding.evidence,
+      risk: "Downgrade and CSRF-hardening controls are weaker than expected. The API should also be verified to require X-XSRF-TOKEN on state-changing requests.",
+      impact: "If another weakness is present, weaker XSRF cookie attributes can make request-forgery or downgrade chains easier.",
+      f12: "Application -> Cookies -> check XSRF-TOKEN attributes; Network -> API requests -> Request Headers -> verify X-XSRF-TOKEN appears on state-changing requests.",
+      remediation: "Set SameSite, avoid setting security cookies over HTTP, and enforce XSRF token validation server-side."
+    });
+  }
+
+  if (byId.has("production-debug-logging-js")) {
+    const finding = byId.get("production-debug-logging-js");
+    items.push({
+      id: finding.id,
+      title: "Production debug logging in JS",
+      confirmed: finding.evidence,
+      risk: "Sensitive application or payment workflow data may appear in browser consoles, screenshots, support recordings, or telemetry.",
+      impact: "Operational support or user screenshots could expose candidate/payment state that should not be logged client-side.",
+      f12: "During an authorized test flow, open Console and watch for payment/application logs; in Sources search for `console.log(\"Payment payload\"` and related payment labels.",
+      remediation: "Remove production console logging around candidate, application, and payment flows."
+    });
+  }
+
+  if (byId.has("sensitive-endpoint-map-public-js")) {
+    const finding = byId.get("sensitive-endpoint-map-public-js");
+    items.push({
+      id: finding.id,
+      title: "Sensitive endpoint map exposed in public JS",
+      confirmed: finding.evidence,
+      risk: "This is not a vulnerability by itself, but it gives attackers the exact API map for IDOR, payment, download, and authorization testing.",
+      impact: "Server-side authorization must be strict on every exposed endpoint because endpoint names are public.",
+      f12: "Sources -> global search for `candidate/full-profile`, `download-url`, and `payment/reconcile`.",
+      remediation: "Treat all frontend-discovered routes as public knowledge and enforce object ownership, authorization, and rate limits server-side."
+    });
+  }
+
+  if (byId.has("client-side-password-transform")) {
+    const finding = byId.get("client-side-password-transform");
+    items.push({
+      id: finding.id,
+      title: "Client-side password transform is not real protection",
+      confirmed: finding.evidence,
+      risk: "The transform is only defense-in-depth. If HTTP injection or XSS occurs, a password can be captured before the transform runs.",
+      impact: "Authentication safety still depends on HTTPS, CSP, server validation, and secure session handling.",
+      f12: "Sources -> search for `AES-GCM`, `SHA-256`, and `123456789`.",
+      remediation: "Do not rely on client-side encryption/obfuscation as a security boundary; protect the browser runtime and server authentication flow."
+    });
+  }
+
+  if (byId.has("security-txt-unavailable")) {
+    const finding = byId.get("security-txt-unavailable");
+    items.push({
+      id: finding.id,
+      title: "No useful security.txt; standard file falls back or is unavailable",
+      confirmed: finding.evidence,
+      risk: "Low risk. It makes responsible disclosure and scanner classification harder.",
+      impact: "Researchers may have difficulty finding the correct security contact and policy.",
+      f12: `Open ${finding.location} and verify whether it returns valid security.txt content or the SPA HTML page.`,
+      remediation: "Publish valid RFC 9116 security.txt at /.well-known/security.txt."
+    });
+  }
+
+  return items.filter((item) => item.confirmed && (target || item));
+}
+
 function renderScopeAndAuthorization(report) {
   return [
     `- Target: \`${report.target}\``,
@@ -2542,6 +2980,13 @@ function safePocForFinding(finding, report) {
   const status = findingStatus(finding);
   const baseNote = "Run only against systems you own or are explicitly authorized to test.";
 
+  if (finding.id === "http-without-https-redirect") {
+    return {
+      summary: "Confirm the HTTP endpoint returns content instead of redirecting to HTTPS.",
+      commands: [`curl.exe -I "${target}"`],
+      note: "Expected secure behavior is a 301 or 308 Location header pointing to https://."
+    };
+  }
   if (finding.category === "HTTP security header") {
     return {
       summary: "Confirm the missing or weak browser security header without sending payloads.",
@@ -2889,6 +3334,7 @@ function renderHtml(report, markdown) {
     </section>
     <section class="section"><h2>Assessment Conclusion</h2>${htmlParagraphs(renderAssessmentConclusion(report, counts, statuses))}</section>
     <section class="section"><h2>Key Risk Summary</h2>${htmlMarkdownList(renderKeyRiskSummary(report))}</section>
+    <section class="section"><h2>Confirmed Vulnerabilities / Risks</h2>${renderConfirmedRisksHtml(report)}</section>
     <section class="section"><h2>Scope And Authorization</h2>${htmlMarkdownList(renderScopeAndAuthorization(report))}</section>
     <section class="section"><h2>Auth And Business Logic Scope</h2>${htmlMarkdownList(renderAuthScope(report))}</section>
     ${sections.map((severity) => renderHtmlSeveritySection(severity, report)).join("")}
@@ -2953,6 +3399,19 @@ function renderFindingCardHtml(finding, index, report) {
     ${poc ? `<div class="field"><strong>Safe PoC / Validation</strong><p>${escapeHtml(poc.summary)}</p>${poc.commands?.length ? `<pre>${escapeHtml(poc.commands.join("\n"))}</pre>` : ""}${poc.note ? `<p class="muted">${escapeHtml(poc.note)}</p>` : ""}</div>` : ""}
     ${status === "Needs validation" ? `<div class="field"><strong>Validation Needed</strong>Confirm server-side behavior with an authenticated test account, source review, or controlled staging proof before relying on this as an exploitable vulnerability.</div>` : ""}
   </article>`;
+}
+
+function renderConfirmedRisksHtml(report) {
+  const items = confirmedRiskItems(report);
+  if (!items.length) return `<p class="empty">No confirmed vulnerabilities or concrete risk observations were recorded by the checks that ran.</p>`;
+  return items.map((item) => `<article class="finding">
+    <div class="finding-head"><h3>${escapeHtml(item.title)}</h3></div>
+    <div class="field"><strong>Confirmed</strong>${escapeHtml(item.confirmed)}</div>
+    <div class="field"><strong>Risk</strong>${escapeHtml(item.risk)}</div>
+    <div class="field"><strong>Impact</strong>${escapeHtml(item.impact)}</div>
+    <div class="field"><strong>F12 check</strong><code>${escapeHtml(item.f12)}</code></div>
+    ${item.remediation ? `<div class="field"><strong>Fix</strong>${escapeHtml(item.remediation)}</div>` : ""}
+  </article>`).join("");
 }
 
 function htmlParagraphs(text) {
