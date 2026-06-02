@@ -4,6 +4,7 @@
 
 ![CI](https://github.com/xsourabhsharma/ai-security-audit-pro/actions/workflows/ci.yml/badge.svg)
 [![npm](https://img.shields.io/npm/v/ai-security-audit-pro.svg)](https://www.npmjs.com/package/ai-security-audit-pro)
+![Source Version: 0.8.0](https://img.shields.io/badge/source-v0.8.0-0f766e.svg)
 [![ClawHub](https://img.shields.io/badge/ClawHub-ai--security--audit--pro-111827.svg)](https://clawhub.ai/plugins/ai-security-audit-pro)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Node.js](https://img.shields.io/badge/node-%3E%3D18-339933.svg)
@@ -62,6 +63,9 @@ The package is published on npm:
 
 - npm package: [ai-security-audit-pro](https://www.npmjs.com/package/ai-security-audit-pro)
 - GitHub source: [xsourabhsharma/ai-security-audit-pro](https://github.com/xsourabhsharma/ai-security-audit-pro)
+- Current source version: `0.8.0`
+
+The npm badge shows the latest package already published to npm. After maintainers publish `0.8.0`, the badge will update automatically.
 
 Install it globally when you want the CLI available to Codex, Claude Code, Gemini CLI, OpenCode, Hermes, OpenClaw, or any other shell-capable agent:
 
