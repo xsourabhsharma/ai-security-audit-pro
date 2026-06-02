@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.8.2
+
+- Added local IDOR/BOLA route hotspot detection for object lookups without nearby authorization controls.
+- Added mass-assignment and privilege-field assignment review signals for API handlers.
+- Added JWT/session checks for decode-without-verify, ignored expiration, weak literal secrets, weak cookie options, and browser-readable token storage.
+- Added public frontend config exposure checks for sensitive-looking `NEXT_PUBLIC`, `VITE`, `REACT_APP`, and `PUBLIC` variables.
+- Added GraphQL introspection/schema signals for local code and public SPA bundles.
+- Added GitHub Actions CI/CD security checks for risky `pull_request_target`, write-all permissions, untrusted PR input, and floating action refs.
+- Added SPA bundle checks for browser token storage and secret-like public config names with value redaction.
+- Added a CLI self-test fixture so release tests prove the new checks fire.
+- Bumped package and plugin manifests to `0.8.2`.
+
+## 0.8.1
+
+- Added SPA identity-workflow signal detection for Aadhaar/DigiLocker-style login flows where public client code sends candidate and identity fields together but cannot prove server-side binding.
+- Added confirmed detection for hardcoded mobile/contact placeholders in identity login flows.
+- Added payment return URL host-mismatch detection for public SPA payment configuration.
+- Fixed a JavaScript bundle reporting fallback that referenced an undefined asset variable.
+- Updated plugin manifests so Codex, Claude, and OpenClaw adapters advertise the current package version.
+- Improved validation wording so auth-bypass claims require controlled test identities, server logs, or staging proof before being treated as confirmed.
+
 ## 0.8.0
 
 - Added a dedicated `Confirmed Vulnerabilities / Risks` report section for clearer executive-style handoffs.

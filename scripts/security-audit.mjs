@@ -276,6 +276,10 @@ async function auditPath(root, args, rules, report) {
   await checkSensitiveLocalFiles(root, report);
   await detectApiArtifacts(root, files, report);
   await analyzeWebRoutes(root, scanFiles, report);
+  await analyzeAuthorizationAndBusinessLogicHotspots(root, scanFiles, report);
+  await scanAuthTokenAndSessionHotspots(root, scanFiles, report);
+  await scanClientExposurePatterns(root, scanFiles, report);
+  await scanCiCdSecurityHotspots(root, files, report);
   addLocalReviewedSurfaces(report);
 
   if (args.runTools) {
@@ -508,6 +512,322 @@ async function analyzeWebRoutes(root, files, report) {
   if (endpoints.length > 100) {
     report.skipped.push(`Endpoint inventory truncated at 100 of ${endpoints.length} detected routes.`);
   }
+}
+
+async function analyzeAuthorizationAndBusinessLogicHotspots(root, files, report) {
+  report.checks.push("Authorization, IDOR/BOLA, and mass-assignment hotspot scan");
+  const routeRegexes = [
+    /\b(?:app|router)\.(get|post|put|patch|delete)\s*\(\s*['"`]([^'"`]+)['"`]/i,
+    /@\w+\.(get|post|put|patch|delete|route)\s*\(\s*['"`]([^'"`]+)['"`]/i,
+    /\bpath\s*\(\s*['"`]([^'"`]+)['"`]/i
+  ];
+  const objectRoute = /(?:[:/{<](?:id|userId|accountId|candidateId|studentId|roll|rollNo|rroll|orderId|paymentId|fileId|documentId|photoId)\b|\/(?:user|users|account|accounts|candidate|student|students|payment|payments|order|orders|file|files|download|photo|photos)\b)/i;
+  const objectLookup = /\b(req\.params|request\.path_params|params\.|findById|findUnique|findFirst|findOne|where\s*:\s*\{|ObjectId\s*\(|SELECT\b[^;\n]+\bWHERE\b|\.doc\s*\(|\.collection\s*\()/i;
+  const authzControl = /\b(authorize|authorized|permission|policy|canAccess|canView|canEdit|isOwner|ownerId|tenantId|orgId|organizationId|schoolId|createdBy|belongsTo|currentUser|current_user|req\.user|request\.user|session\.user|principal|acl|rbac|abac|Depends\s*\(|Security\s*\(|login_required)\b/i;
+  const massAssignment = /\b(Object\.assign\s*\([^,\n]+,\s*(req|request)\.(body|json)|\.(create|update|updateMany|findOneAndUpdate)\s*\([^;\n]*(req|request)\.(body|json)|\bnew\s+\w+\s*\(\s*(req|request)\.(body|json)\s*\))/i;
+  const privilegeFieldFromBody = /\b(role|roles|isAdmin|isSuperuser|permissions|scopes|verified|status)\b\s*[:=]\s*(req|request)\.(body|json|data)\b/i;
+
+  for (const file of files.filter(isSourceCodeFile)) {
+    const rel = path.relative(root, file);
+    const text = await fs.readFile(file, "utf8").catch(() => "");
+    if (!text) continue;
+    const lines = text.split(/\r?\n/);
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      const routeMatch = routeRegexes.map((regex) => line.match(regex)).find(Boolean);
+      if (routeMatch) {
+        const route = routeMatch[2] || routeMatch[1] || "";
+        const block = lineWindow(lines, index, 0, 45);
+        if ((objectRoute.test(route) || objectLookup.test(block)) && objectLookup.test(block) && !authzControl.test(block)) {
+          addFinding(report, {
+            id: `idor-bola-review-${rel}-${index + 1}`.replace(/[^a-z0-9_-]+/gi, "-"),
+            title: "Object lookup route needs IDOR/BOLA authorization review",
+            severity: "medium",
+            category: "Authorization review hotspot",
+            location: `${rel}:${index + 1}`,
+            evidence: trimEvidence(line),
+            owasp: "API1:2023 Broken Object Level Authorization",
+            cwe: "CWE-639",
+            confidence: "low",
+            remediation: "Verify this route checks authenticated user, tenant, role, and object ownership before returning or mutating records selected by path/body identifiers."
+          });
+        }
+      }
+
+      if (massAssignment.test(line)) {
+        addFinding(report, {
+          id: `mass-assignment-review-${rel}-${index + 1}`.replace(/[^a-z0-9_-]+/gi, "-"),
+          title: "Mass-assignment hotspot uses request body directly",
+          severity: "medium",
+          category: "Authorization review hotspot",
+          location: `${rel}:${index + 1}`,
+          evidence: trimEvidence(line),
+          owasp: "API3:2023 Broken Object Property Level Authorization",
+          cwe: "CWE-915",
+          confidence: "medium",
+          remediation: "Map allowed fields explicitly, reject privilege and ownership fields from client input, and add tests for role/status/owner manipulation attempts."
+        });
+      }
+
+      if (privilegeFieldFromBody.test(line)) {
+        addFinding(report, {
+          id: `privilege-field-body-${rel}-${index + 1}`.replace(/[^a-z0-9_-]+/gi, "-"),
+          title: "Privilege or account-state field appears client-controlled",
+          severity: "high",
+          category: "Authorization review hotspot",
+          location: `${rel}:${index + 1}`,
+          evidence: trimEvidence(line),
+          owasp: "API3:2023 Broken Object Property Level Authorization",
+          cwe: "CWE-915",
+          confidence: "medium",
+          remediation: "Never accept role, permission, verification, or account-state fields directly from ordinary client requests. Derive them server-side from trusted authorization logic."
+        });
+      }
+    }
+  }
+}
+
+async function scanAuthTokenAndSessionHotspots(root, files, report) {
+  report.checks.push("JWT, token storage, and session-hardening hotspot scan");
+  const jwtDecode = /\bjwt\.decode\s*\(/i;
+  const jwtIgnoreExpiration = /\bjwt\.verify\s*\([^;\n]*ignoreExpiration\s*:\s*true/i;
+  const weakJwtSecret = /\bjwt\.(sign|verify)\s*\([^;\n]+,\s*["'](?:secret|changeme|password|default|test|dev|123456)["']/i;
+  const webStorageToken = /\b(localStorage|sessionStorage)\.(setItem|getItem)\s*\([^;\n]*(token|jwt|accessToken|refreshToken|idToken|session)/i;
+  const documentCookieToken = /\bdocument\.cookie\s*=[^;\n]*(token|jwt|accessToken|refreshToken|session)/i;
+  const httpOnlyFalse = /\bhttpOnly\s*:\s*false\b/i;
+  const insecureCookie = /\bsecure\s*:\s*false\b/i;
+
+  for (const file of files.filter(isSourceCodeFile)) {
+    const rel = path.relative(root, file);
+    const text = await fs.readFile(file, "utf8").catch(() => "");
+    if (!text) continue;
+    const lines = text.split(/\r?\n/);
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      const location = `${rel}:${index + 1}`;
+
+      if (jwtDecode.test(line) && !/\bverify\s*\(/i.test(lineWindow(lines, index, 0, 4))) {
+        addFinding(report, {
+          id: `jwt-decode-without-verify-${rel}-${index + 1}`.replace(/[^a-z0-9_-]+/gi, "-"),
+          title: "JWT decoded without nearby signature verification",
+          severity: "high",
+          category: "Token/session security",
+          location,
+          evidence: trimEvidence(line),
+          owasp: "A07:2021 Identification and Authentication Failures",
+          cwe: "CWE-347",
+          confidence: "medium",
+          remediation: "Use jwt.verify with expected algorithm, issuer, audience, expiry, and key selection before trusting claims. Treat decode-only claims as untrusted display data."
+        });
+      }
+
+      if (jwtIgnoreExpiration.test(line)) {
+        addFinding(report, {
+          id: `jwt-ignore-expiration-${rel}-${index + 1}`.replace(/[^a-z0-9_-]+/gi, "-"),
+          title: "JWT verification ignores token expiration",
+          severity: "high",
+          category: "Token/session security",
+          location,
+          evidence: trimEvidence(line),
+          owasp: "A07:2021 Identification and Authentication Failures",
+          cwe: "CWE-613",
+          confidence: "high",
+          remediation: "Remove ignoreExpiration in production paths and enforce short token lifetimes plus server-side revocation for high-risk sessions."
+        });
+      }
+
+      if (weakJwtSecret.test(line)) {
+        addFinding(report, {
+          id: `weak-jwt-secret-${rel}-${index + 1}`.replace(/[^a-z0-9_-]+/gi, "-"),
+          title: "JWT uses a weak literal signing secret",
+          severity: "critical",
+          category: "Token/session security",
+          location,
+          evidence: redactSecret(trimEvidence(line)),
+          owasp: "A02:2021 Cryptographic Failures",
+          cwe: "CWE-798",
+          confidence: "high",
+          remediation: "Rotate tokens signed with the weak secret, load a high-entropy key from a secret manager, and pin allowed JWT algorithms."
+        });
+      }
+
+      if (webStorageToken.test(line) || documentCookieToken.test(line)) {
+        addFinding(report, {
+          id: `browser-token-storage-${rel}-${index + 1}`.replace(/[^a-z0-9_-]+/gi, "-"),
+          title: "Browser-accessible token storage needs XSS/session review",
+          severity: "medium",
+          category: "Client-side token storage",
+          location,
+          evidence: trimEvidence(line),
+          owasp: "A07:2021 Identification and Authentication Failures",
+          cwe: "CWE-922",
+          confidence: "medium",
+          remediation: "Prefer secure HttpOnly cookies for session-bearing tokens where practical, reduce token lifetime, and ensure CSP/XSS defenses are strong when browser-readable tokens are unavoidable."
+        });
+      }
+
+      if ((httpOnlyFalse.test(line) || insecureCookie.test(line)) && /cookie|session|token/i.test(lineWindow(lines, index, 3, 3))) {
+        addFinding(report, {
+          id: `insecure-cookie-option-${rel}-${index + 1}`.replace(/[^a-z0-9_-]+/gi, "-"),
+          title: "Session cookie appears configured with weak security options",
+          severity: "high",
+          category: "Token/session security",
+          location,
+          evidence: trimEvidence(line),
+          owasp: "A07:2021 Identification and Authentication Failures",
+          cwe: "CWE-614",
+          confidence: "medium",
+          remediation: "Set Secure and HttpOnly on session cookies, use SameSite=Lax or Strict by default, and scope Domain/Path narrowly."
+        });
+      }
+    }
+  }
+}
+
+async function scanClientExposurePatterns(root, files, report) {
+  report.checks.push("Client-side public config and GraphQL exposure signal scan");
+  const publicSensitiveEnv = /\b((?:NEXT_PUBLIC|VITE|REACT_APP|PUBLIC)_[A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PRIVATE|CLIENT_SECRET)[A-Z0-9_]*)\b\s*[:=]\s*["'][^"']{6,}["']/i;
+  const publicApiKeyName = /\b((?:NEXT_PUBLIC|VITE|REACT_APP|PUBLIC)_[A-Z0-9_]*(?:API_KEY|KEY)[A-Z0-9_]*)\b\s*[:=]\s*["'][^"']{8,}["']/i;
+  const graphqlIntrospectionSignal = /\b(__schema|__type|IntrospectionQuery|getIntrospectionQuery|introspection)\b/i;
+  const graphqlRuntimeContext = /\b(fetch|GraphQLClient|ApolloClient|createHttpLink|graphqlHTTP|createYoga|express-graphql|urql|relay|useQuery|useMutation|query\s*\(|mutate\s*\(|app\.use\s*\([^;\n]*graphql)\b/i;
+
+  for (const file of files.filter(isSourceCodeFile)) {
+    const rel = path.relative(root, file);
+    const text = await fs.readFile(file, "utf8").catch(() => "");
+    if (!text) continue;
+    const lines = text.split(/\r?\n/);
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      const sensitive = line.match(publicSensitiveEnv);
+      if (sensitive) {
+        addFinding(report, {
+          id: `public-sensitive-env-${rel}-${index + 1}`.replace(/[^a-z0-9_-]+/gi, "-"),
+          title: "Sensitive-looking public frontend environment variable",
+          severity: "high",
+          category: "Client-side exposure",
+          location: `${rel}:${index + 1}`,
+          evidence: `Public variable ${sensitive[1]} is assigned a value; value redacted.`,
+          owasp: "A02:2021 Cryptographic Failures",
+          cwe: "CWE-200",
+          confidence: "medium",
+          remediation: "Move secrets, private tokens, and privileged credentials to server-side configuration. Public frontend variables are shipped to browsers and must be treated as public."
+        });
+      }
+
+      const apiKey = line.match(publicApiKeyName);
+      if (apiKey) {
+        addFinding(report, {
+          id: `public-api-key-env-${rel}-${index + 1}`.replace(/[^a-z0-9_-]+/gi, "-"),
+          title: "Public frontend API key should be restricted",
+          severity: "low",
+          category: "Client-side exposure",
+          location: `${rel}:${index + 1}`,
+          evidence: `Public variable ${apiKey[1]} is assigned a value; value redacted.`,
+          owasp: "A05:2021 Security Misconfiguration",
+          cwe: "CWE-200",
+          confidence: "medium",
+          remediation: "Confirm the key is intended to be public and restrict it by domain, app, API scope, quota, and billing protections."
+        });
+      }
+
+      const graphqlNeighborhood = lineWindow(lines, index, 8, 8);
+      if (graphqlIntrospectionSignal.test(line) && graphqlRuntimeContext.test(graphqlNeighborhood) && !isScannerRuleOrReportText(line)) {
+        addFinding(report, {
+          id: `graphql-introspection-signal-${rel}-${index + 1}`.replace(/[^a-z0-9_-]+/gi, "-"),
+          title: "GraphQL introspection or schema exposure needs review",
+          severity: "medium",
+          category: "API security",
+          location: `${rel}:${index + 1}`,
+          evidence: trimEvidence(line),
+          owasp: "API9:2023 Improper Inventory Management",
+          cwe: "CWE-200",
+          confidence: "low",
+          remediation: "Verify production GraphQL introspection, schema dumps, and GraphiQL-style consoles are disabled or authenticated unless intentionally public."
+        });
+      }
+    }
+  }
+}
+
+async function scanCiCdSecurityHotspots(root, files, report) {
+  report.checks.push("CI/CD workflow security hotspot scan");
+  const workflowFiles = files.filter((file) => {
+    const rel = path.relative(root, file).replaceAll("\\", "/");
+    return rel.startsWith(".github/workflows/") && /\.(ya?ml)$/i.test(file);
+  });
+  report.inventory.githubWorkflowFiles = workflowFiles.length;
+  if (!workflowFiles.length) return;
+
+  for (const file of workflowFiles) {
+    const rel = path.relative(root, file).replaceAll("\\", "/");
+    const text = await fs.readFile(file, "utf8").catch(() => "");
+    if (!text) continue;
+    const lines = text.split(/\r?\n/);
+    const hasPullRequestTarget = /\bpull_request_target\b/i.test(text);
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      const location = `${rel}:${index + 1}`;
+
+      if (hasPullRequestTarget && /permissions\s*:\s*write-all/i.test(line)) {
+        addFinding(report, {
+          id: `gha-pr-target-write-all-${rel}-${index + 1}`.replace(/[^a-z0-9_-]+/gi, "-"),
+          title: "pull_request_target workflow grants write-all permissions",
+          severity: "high",
+          category: "CI/CD security",
+          location,
+          evidence: trimEvidence(line),
+          owasp: "A08:2021 Software and Data Integrity Failures",
+          cwe: "CWE-266",
+          confidence: "high",
+          remediation: "Use least-privilege permissions and avoid write tokens in pull_request_target workflows that process untrusted pull request content."
+        });
+      }
+
+      if (hasPullRequestTarget && /github\.event\.pull_request\.(head|title|body|user)|pull_request\.head\.ref/i.test(lineWindow(lines, index, 3, 3)) && /\brun\s*:|actions\/checkout/i.test(lineWindow(lines, index, 3, 3))) {
+        addFinding(report, {
+          id: `gha-pr-target-untrusted-input-${rel}-${index + 1}`.replace(/[^a-z0-9_-]+/gi, "-"),
+          title: "pull_request_target workflow may execute untrusted PR input",
+          severity: "high",
+          category: "CI/CD security",
+          location,
+          evidence: trimEvidence(line),
+          owasp: "A08:2021 Software and Data Integrity Failures",
+          cwe: "CWE-829",
+          confidence: "medium",
+          remediation: "Do not checkout or execute untrusted PR head content in pull_request_target with privileged tokens. Use pull_request with read-only permissions or a two-stage trusted workflow."
+        });
+      }
+
+      const floatingAction = line.match(/\buses\s*:\s*([^@\s]+)@(?:main|master|latest)\b/i);
+      if (floatingAction) {
+        addFinding(report, {
+          id: `gha-floating-action-${rel}-${index + 1}`.replace(/[^a-z0-9_-]+/gi, "-"),
+          title: "GitHub Action uses a floating ref",
+          severity: "low",
+          category: "CI/CD security",
+          location,
+          evidence: trimEvidence(line),
+          owasp: "A08:2021 Software and Data Integrity Failures",
+          cwe: "CWE-829",
+          confidence: "high",
+          remediation: "Pin third-party actions to immutable commit SHAs or a trusted release process to reduce supply-chain takeover risk."
+        });
+      }
+    }
+  }
+}
+
+function lineWindow(lines, index, before, after) {
+  const start = Math.max(0, index - before);
+  const end = Math.min(lines.length, index + after + 1);
+  return lines.slice(start, end).join("\n");
+}
+
+function isScannerRuleOrReportText(line) {
+  return /graphqlIntrospectionSignal|graphqlRuntimeContext|spa-graphql-introspection-signal|GraphQL introspection\/schema|Public JavaScript references GraphQL|__schema\|__type\|IntrospectionQuery/i.test(line);
 }
 
 function isSourceCodeFile(file) {
@@ -1021,7 +1341,7 @@ async function checkClientBundleRiskSignals(url, responseInfo, report) {
       title: "Production debug logging in JS",
       severity: "medium",
       category: "Information disclosure",
-      location: bundles.find((bundle) => sensitiveLogTerms.some((term) => bundle.text.includes(term)))?.url || assetUrls[0],
+      location: bundles.find((bundle) => sensitiveLogTerms.some((term) => bundle.text.includes(term)))?.url || initialAssetUrls[0],
       evidence: `${consoleLogCount} console.log call(s) observed; sensitive log labels include: ${sensitiveLogTerms.slice(0, 8).join(", ")}`,
       owasp: "A09:2021 Security Logging and Monitoring Failures",
       cwe: "CWE-532",
@@ -1068,6 +1388,131 @@ async function checkClientBundleRiskSignals(url, responseInfo, report) {
       cwe: "CWE-311",
       confidence: "high",
       remediation: "Treat client-side transforms only as defense-in-depth. Enforce HTTPS, strong CSP, secure authentication, server-side validation, and protection before the browser transform step."
+    });
+  }
+
+  checkIdentityWorkflowSignals(combined, bundles, initialAssetUrls, report);
+  checkPaymentWorkflowSignals(combined, bundles, initialAssetUrls, origin, report);
+  checkSpaAuthAndConfigSignals(combined, bundles, initialAssetUrls, report);
+}
+
+function checkIdentityWorkflowSignals(combined, bundles, initialAssetUrls, report) {
+  const aadhaarSignal =
+    /\baadhaar(Name|Number)?\b/i.test(combined) &&
+    /\b(dob|dateOfBirth|gender)\b/i.test(combined) &&
+    /auth\/login|\/login\b/i.test(combined);
+  const userIdSignal = /\b(userId|userid|rollNo|rroll)\b/i.test(combined);
+  const digilockerSignal = /digilocker/i.test(combined);
+  if (aadhaarSignal && userIdSignal && digilockerSignal) {
+    addFinding(report, {
+      id: "identity-binding-needs-validation",
+      title: "Aadhaar/DigiLocker identity binding needs server-side validation",
+      severity: "high",
+      category: "Authentication business logic",
+      location: bundles.find((bundle) => /aadhaar|digilocker/i.test(bundle.text) && /auth\/login|\/login\b/i.test(bundle.text))?.url || initialAssetUrls[0],
+      evidence: "Public bundle sends roll/user identity and Aadhaar/DigiLocker identity fields through the login flow; client code cannot prove server-side binding.",
+      owasp: "A07:2021 Identification and Authentication Failures",
+      cwe: "CWE-287",
+      confidence: "low",
+      remediation: "Verify server-side binding between verified Aadhaar/DigiLocker identity and the submitted candidate record. Reject valid-but-unrelated identities and add regression tests for mismatched Aadhaar-to-roll combinations."
+    });
+  }
+
+  const placeholderPatterns = [
+    /\bDIGILOCKER_PLACEHOLDER_MOBILE\s*=\s*["']9{1,}0*["']/i,
+    /\bmobileNo\b[^;\n]{0,120}["']9000000000["']/i,
+    /\bmobileNo\b[^;\n]{0,120}\bPLACEHOLDER/i
+  ];
+  if (placeholderPatterns.some((pattern) => pattern.test(combined))) {
+    addFinding(report, {
+      id: "hardcoded-identity-mobile-placeholder",
+      title: "Hardcoded identity mobile placeholder in login flow",
+      severity: "medium",
+      category: "Authentication business logic",
+      location: bundles.find((bundle) => placeholderPatterns.some((pattern) => pattern.test(bundle.text)))?.url || initialAssetUrls[0],
+      evidence: "Public bundle assigns a fixed placeholder mobile number in the identity-verification login path.",
+      owasp: "A07:2021 Identification and Authentication Failures",
+      cwe: "CWE-287",
+      confidence: "high",
+      remediation: "Do not send or trust a fixed mobile number in identity workflows. Derive contact data server-side from the verified identity assertion or omit it when it is not required."
+    });
+  }
+}
+
+function checkPaymentWorkflowSignals(combined, bundles, initialAssetUrls, origin, report) {
+  const returnUrlMatches = [...combined.matchAll(/\b(?:sbiReturnUrl|returnUrl|callbackUrl|successUrl)\s*:\s*["'](https?:\/\/[^"']+)["']/gi)];
+  const mismatched = [];
+  for (const match of returnUrlMatches) {
+    try {
+      const configured = new URL(match[1]);
+      if (configured.origin !== origin) {
+        mismatched.push(`${configured.hostname} != ${new URL(origin).hostname}`);
+      }
+    } catch {
+      // Ignore malformed URLs.
+    }
+  }
+  if (mismatched.length && /payment|sbi|orderRefNumber|createOrder/i.test(combined)) {
+    addFinding(report, {
+      id: "payment-return-url-host-mismatch",
+      title: "Payment return URL host differs from current portal host",
+      severity: "medium",
+      category: "Payment workflow",
+      location: bundles.find((bundle) => /sbiReturnUrl|returnUrl|callbackUrl|successUrl/i.test(bundle.text) && /payment|sbi|createOrder/i.test(bundle.text))?.url || initialAssetUrls[0],
+      evidence: `Configured payment return host differs from target host (${unique(mismatched).join(", ")}).`,
+      owasp: "A04:2021 Insecure Design",
+      cwe: "CWE-840",
+      confidence: "high",
+      remediation: "Align payment return URLs with the active production host, validate return/callback targets server-side, and reject client-controlled or stale-host payment return parameters."
+    });
+  }
+}
+
+function checkSpaAuthAndConfigSignals(combined, bundles, initialAssetUrls, report) {
+  const tokenStoragePattern = /\b(localStorage|sessionStorage)\.(setItem|getItem)\s*\([^)]*(token|jwt|accessToken|refreshToken|idToken|session)/i;
+  if (tokenStoragePattern.test(combined)) {
+    addFinding(report, {
+      id: "spa-browser-token-storage",
+      title: "SPA bundle uses browser-accessible token storage",
+      severity: "medium",
+      category: "Client-side token storage",
+      location: bundles.find((bundle) => tokenStoragePattern.test(bundle.text))?.url || initialAssetUrls[0],
+      evidence: "Public JavaScript bundle references localStorage/sessionStorage token access patterns.",
+      owasp: "A07:2021 Identification and Authentication Failures",
+      cwe: "CWE-922",
+      confidence: "medium",
+      remediation: "Prefer HttpOnly Secure SameSite cookies for session-bearing tokens where practical, keep token lifetime short, and harden CSP/XSS controls if browser-readable tokens are unavoidable."
+    });
+  }
+
+  const secretLikeNames = unique([...combined.matchAll(/\b((?:NEXT_PUBLIC|VITE|REACT_APP|PUBLIC)_[A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PRIVATE|CLIENT_SECRET)[A-Z0-9_]*|[A-Za-z0-9_]*(?:Secret|PrivateKey|ClientSecret|AccessToken|RefreshToken|Password)[A-Za-z0-9_]*)\b\s*[:=]\s*["'][^"']{8,}["']/g)].map((match) => match[1])).slice(0, 10);
+  if (secretLikeNames.length) {
+    addFinding(report, {
+      id: "spa-secret-like-public-config",
+      title: "Secret-like configuration name appears in public JS bundle",
+      severity: "high",
+      category: "Client-side exposure",
+      location: bundles.find((bundle) => secretLikeNames.some((name) => bundle.text.includes(name)))?.url || initialAssetUrls[0],
+      evidence: `Secret-like public config names observed: ${secretLikeNames.join(", ")}. Values redacted.`,
+      owasp: "A02:2021 Cryptographic Failures",
+      cwe: "CWE-200",
+      confidence: "medium",
+      remediation: "Verify these values are not real secrets. Move privileged credentials server-side and rotate any secret that has shipped in public JavaScript."
+    });
+  }
+
+  if (/\b(graphql|apollo|urql|relay)\b/i.test(combined) && /\b(__schema|__type|IntrospectionQuery|getIntrospectionQuery|graphiql)\b/i.test(combined)) {
+    addFinding(report, {
+      id: "spa-graphql-introspection-signal",
+      title: "GraphQL introspection/schema signal in public frontend",
+      severity: "medium",
+      category: "API security",
+      location: bundles.find((bundle) => /\b(__schema|__type|IntrospectionQuery|getIntrospectionQuery|graphiql)\b/i.test(bundle.text))?.url || initialAssetUrls[0],
+      evidence: "Public JavaScript references GraphQL introspection/schema terms.",
+      owasp: "API9:2023 Improper Inventory Management",
+      cwe: "CWE-200",
+      confidence: "low",
+      remediation: "Confirm production GraphQL introspection, schema download, and GraphiQL-style consoles are disabled or authenticated unless the schema is intentionally public."
     });
   }
 }
@@ -1903,6 +2348,24 @@ function addLocalReviewedSurfaces(report) {
       riskArea: "Authz, BOLA/IDOR, CSRF, API inventory",
       outcome: "Reviewed",
       notes: `${report.inventory.endpoints?.length || 0} route declarations and ${report.inventory.apiArtifacts?.length || 0} API artifacts inventoried.`
+    },
+    {
+      surface: "Authorization and business logic hotspots",
+      riskArea: "IDOR/BOLA, mass assignment, privilege-field tampering",
+      outcome: "Reviewed",
+      notes: "Route neighborhoods, object lookup patterns, request-body assignment, and privilege-field assignment signals were scanned."
+    },
+    {
+      surface: "Token and session handling",
+      riskArea: "JWT verification, weak signing secrets, browser-readable tokens, cookie options",
+      outcome: "Reviewed",
+      notes: "JWT/session code patterns and client-side token storage signals were scanned."
+    },
+    {
+      surface: "CI/CD workflows",
+      riskArea: "pull_request_target, privileged tokens, unpinned actions",
+      outcome: report.inventory.githubWorkflowFiles ? "Reviewed" : "Not applicable",
+      notes: report.inventory.githubWorkflowFiles ? `${report.inventory.githubWorkflowFiles} GitHub Actions workflow file(s) scanned.` : "No GitHub Actions workflow files detected."
     }
   );
 }
@@ -1932,6 +2395,12 @@ function addUrlReviewedSurfaces(report) {
       riskArea: "Template-based and crawler-assisted website vulnerabilities",
       outcome: report.mode === "active" ? "Reviewed" : "Deferred",
       notes: report.mode === "active" ? "Active scanner orchestration attempted where tools were installed." : "Requires active mode and explicit authorization."
+    },
+    {
+      surface: "Public SPA bundles",
+      riskArea: "Debug logging, endpoint maps, token storage, secret-like config, identity/payment workflow signals",
+      outcome: report.checks?.includes("Public SPA bundle risk signal check") ? "Reviewed" : "Deferred",
+      notes: "JavaScript bundle discovery runs on fetched pages when script assets are present."
     }
   );
 }
@@ -2918,6 +3387,71 @@ function confirmedRiskItems(report) {
     });
   }
 
+  if (byId.has("spa-browser-token-storage")) {
+    const finding = byId.get("spa-browser-token-storage");
+    items.push({
+      id: finding.id,
+      title: "Browser-readable token storage in SPA",
+      confirmed: finding.evidence,
+      risk: "If session-bearing tokens are stored in localStorage or sessionStorage, any XSS in the page can read and exfiltrate them.",
+      impact: "A client-side injection bug could become account takeover rather than only page manipulation.",
+      f12: "Sources -> global search for `localStorage`, `sessionStorage`, `accessToken`, `refreshToken`, and `jwt`; Application -> Storage should be checked only in an authorized test session without copying token values.",
+      remediation: "Prefer HttpOnly Secure SameSite cookies where practical, shorten token lifetime, and harden CSP/XSS controls."
+    });
+  }
+
+  if (byId.has("spa-secret-like-public-config")) {
+    const finding = byId.get("spa-secret-like-public-config");
+    items.push({
+      id: finding.id,
+      title: "Secret-like config in public JavaScript",
+      confirmed: finding.evidence,
+      risk: "Anything shipped in a public JavaScript bundle must be treated as public. Secret-like config names may indicate leaked credentials or unrestricted keys.",
+      impact: "Real secrets must be rotated. Public keys can be abused outside the intended frontend if domain, quota, and API restrictions are missing.",
+      f12: "Sources -> global search for the config names listed in the evidence. Do not copy or share full values.",
+      remediation: "Move privileged secrets server-side, restrict public keys, and rotate any credential that was exposed."
+    });
+  }
+
+  if (byId.has("spa-graphql-introspection-signal")) {
+    const finding = byId.get("spa-graphql-introspection-signal");
+    items.push({
+      id: finding.id,
+      title: "GraphQL introspection/schema signal in public frontend",
+      confirmed: finding.evidence,
+      risk: "GraphQL schema visibility can give attackers a map of object types, fields, mutations, and authorization boundaries.",
+      impact: "This is most risky when combined with weak object authorization, excessive fields, or unauthenticated schema access.",
+      f12: "Sources -> global search for `__schema`, `__type`, `IntrospectionQuery`, and `GraphiQL`; Network -> check whether GraphQL schema access requires authorization.",
+      remediation: "Disable or authenticate production introspection/schema tooling unless intentionally public, and enforce authorization per field/object."
+    });
+  }
+
+  if (byId.has("hardcoded-identity-mobile-placeholder")) {
+    const finding = byId.get("hardcoded-identity-mobile-placeholder");
+    items.push({
+      id: finding.id,
+      title: "Hardcoded mobile placeholder in identity login flow",
+      confirmed: finding.evidence,
+      risk: "A fixed mobile value in an identity-verification path can corrupt audit/contact data or become dangerous if the backend treats it as a verified user attribute.",
+      impact: "Impact depends on backend use. It is a confirmed client-side defect and must be validated against server storage, OTP, audit, and authorization behavior.",
+      f12: "Sources -> global search for `DIGILOCKER_PLACEHOLDER_MOBILE`, `mobileNo`, and `9000000000`; Network -> authorized test login -> inspect whether the value is sent.",
+      remediation: "Remove the fixed placeholder and derive identity/contact attributes server-side from a verified assertion, or omit the field entirely."
+    });
+  }
+
+  if (byId.has("payment-return-url-host-mismatch")) {
+    const finding = byId.get("payment-return-url-host-mismatch");
+    items.push({
+      id: finding.id,
+      title: "Payment return URL host mismatch",
+      confirmed: finding.evidence,
+      risk: "Payment return/callback host drift can send users or payment status handling to the wrong portal host if the backend trusts stale or client-supplied return URLs.",
+      impact: "This can cause payment reconciliation failures or payment-flow confusion. Exploitability depends on backend order creation and callback validation.",
+      f12: "Sources -> global search for `sbiReturnUrl` and `returnUrl`; Network -> authorized test payment initiation -> inspect the order payload return URL.",
+      remediation: "Align return URLs with the active host and enforce server-side allowlists for every payment return/callback target."
+    });
+  }
+
   if (byId.has("security-txt-unavailable")) {
     const finding = byId.get("security-txt-unavailable");
     items.push({
@@ -3008,6 +3542,48 @@ function safePocForFinding(finding, report) {
       note: "Inspect schema contents for internal-only endpoints, object identifiers, auth assumptions, and role-protected operations."
     };
   }
+  if (finding.category === "Payment workflow") {
+    return {
+      summary: "Validate with one authorized non-production or low-risk payment test and inspect server-side order creation.",
+      commands: [],
+      note: "Do not perform live payment abuse. Confirm the backend allowlists the return host and ignores stale or client-controlled return URL values."
+    };
+  }
+  if (finding.category === "Authorization review hotspot") {
+    return {
+      summary: "Validate with two controlled test users or tenants and verify object ownership enforcement.",
+      commands: [],
+      note: "Do not enumerate real user IDs. Use staging fixtures or written-authorized test records and confirm unauthorized object IDs are rejected server-side."
+    };
+  }
+  if (finding.category === "Token/session security") {
+    return {
+      summary: "Validate token/session handling with source review and controlled test tokens.",
+      commands: [],
+      note: "Check whether claims are trusted before verification, whether expiry is enforced, and whether weak keys require token rotation. Do not use real user tokens in shared reports."
+    };
+  }
+  if (finding.category === "Client-side token storage") {
+    return {
+      summary: "Confirm whether session-bearing tokens are readable by browser JavaScript.",
+      commands: target && isUrl(target) ? [`curl.exe -sS "${target}" --max-time 10`] : [],
+      note: "For local source, inspect the referenced line. For websites, use DevTools only in an authorized test session and avoid copying token values."
+    };
+  }
+  if (finding.category === "Client-side exposure") {
+    return {
+      summary: "Confirm whether the named public config value is intentionally public and properly restricted.",
+      commands: target && isUrl(target) ? [`curl.exe -sS "${target}" --max-time 10`] : [],
+      note: "Do not print full values. Rotate any credential that shipped in public JavaScript or public frontend environment variables."
+    };
+  }
+  if (finding.category === "CI/CD security") {
+    return {
+      summary: "Review the workflow trigger, token permissions, and checked-out code trust boundary.",
+      commands: ["git grep -n \"pull_request_target\\|permissions:\\|uses:\" -- .github/workflows"],
+      note: "Validate in repository settings and workflow history before changing production CI behavior."
+    };
+  }
   if (finding.category === "CORS") {
     return {
       summary: "Verify dynamic CORS behavior with a harmless synthetic Origin.",
@@ -3052,6 +3628,13 @@ function safePocForFinding(finding, report) {
     };
   }
   if (finding.category === "SAST" || finding.category === "DAST" || status === "Needs validation") {
+    if (finding.id === "identity-binding-needs-validation") {
+      return {
+        summary: "Validate with controlled test identities only; public client code cannot prove server-side identity binding.",
+        commands: [],
+        note: "Use staging or written-authorized test records. Submit a valid-but-unrelated identity for one candidate and verify the backend rejects it without exposing candidate data."
+      };
+    }
     return {
       summary: "Validate exploitability with source review, logs, and a harmless staging proof.",
       commands: [],
@@ -3090,10 +3673,15 @@ function findingStatus(finding) {
     "Exposed path",
     "Information disclosure",
     "Dependency vulnerability",
-    "Secret exposure"
+    "Secret exposure",
+    "Client-side exposure",
+    "Client-side token storage"
   ]);
   if (confirmedCategories.has(finding.category)) return "Confirmed";
   if (finding.category === "API security") return "Likely";
+  if (finding.category === "Authorization review hotspot") return "Needs validation";
+  if (finding.category === "Token/session security") return finding.confidence === "high" ? "Confirmed" : "Needs validation";
+  if (finding.category === "CI/CD security") return finding.confidence === "high" ? "Confirmed" : "Needs validation";
   if (finding.category === "SAST" || finding.category === "DAST") return "Needs validation";
   return "Likely";
 }
@@ -3118,6 +3706,27 @@ function findingRisk(finding) {
   if (finding.category === "Transport security") {
     return "Weak transport settings can expose sessions or data to downgrade, interception, or protocol-level attacks.";
   }
+  if (finding.category === "Authentication business logic") {
+    return "Authentication and identity workflows can fail open if the backend validates that an identity exists but does not bind that identity to the requested user or candidate record.";
+  }
+  if (finding.category === "Payment workflow") {
+    return "Payment workflow configuration drift can break status reconciliation or redirect users through the wrong host when payment return targets are stale or trusted from client-controlled data.";
+  }
+  if (finding.category === "Authorization review hotspot") {
+    return "Object lookup and request-body assignment paths can become IDOR/BOLA or privilege-tampering issues when authorization is not tied to the authenticated user and tenant.";
+  }
+  if (finding.category === "Token/session security") {
+    return "JWT and session mistakes can let attackers trust forged claims, reuse expired tokens, steal browser-readable tokens, or abuse weak cookie settings.";
+  }
+  if (finding.category === "Client-side token storage") {
+    return "Browser-readable session tokens are exposed to any successful XSS or malicious browser extension running in the page context.";
+  }
+  if (finding.category === "Client-side exposure") {
+    return "Values shipped in frontend bundles are public. Secret-like names or unrestricted public keys can expose credentials, quota, billing, or internal service configuration.";
+  }
+  if (finding.category === "CI/CD security") {
+    return "Workflow trust-boundary mistakes can expose privileged GitHub tokens or allow supply-chain compromise through untrusted pull request code or mutable third-party actions.";
+  }
   return bySeverity[finding.severity] || bySeverity.info;
 }
 
@@ -3136,6 +3745,30 @@ function findingImpact(finding) {
   }
   if (finding.category === "API security") {
     return "The exposed API surface gives attackers a map for object authorization, rate-limit, validation, and workflow abuse testing.";
+  }
+  if (finding.id === "identity-binding-needs-validation") {
+    return "If server-side binding is missing, a valid but unrelated identity could authenticate to the wrong candidate record. This remains unconfirmed until controlled server-side validation succeeds.";
+  }
+  if (finding.id === "hardcoded-identity-mobile-placeholder") {
+    return "A fixed mobile attribute can weaken auditability, corrupt contact data, or support account-recovery/OTP mistakes if trusted by the backend.";
+  }
+  if (finding.id === "payment-return-url-host-mismatch") {
+    return "Users or payment status updates may return to a stale host, causing failed reconciliation or confusing payment-state transitions unless server-side validation corrects it.";
+  }
+  if (finding.category === "Authorization review hotspot") {
+    return "If the hotspot is reachable without proper ownership checks, users may access or modify records, files, payments, or account state belonging to another user or tenant.";
+  }
+  if (finding.category === "Token/session security") {
+    return "Impact ranges from account takeover to long-lived unauthorized access depending on whether token verification, expiry, cookie security, and key management are affected.";
+  }
+  if (finding.category === "Client-side token storage") {
+    return "A single XSS issue could become account takeover if access or refresh tokens are readable by JavaScript.";
+  }
+  if (finding.category === "Client-side exposure") {
+    return "Real secrets must be rotated. Public keys should be restricted because attackers can reuse them outside the intended frontend if controls are missing.";
+  }
+  if (finding.category === "CI/CD security") {
+    return "An attacker who influences workflow execution may alter releases, exfiltrate CI secrets, or push unauthorized changes depending on token permissions.";
   }
   if (finding.category === "Dependency vulnerability") {
     return "Impact depends on reachability, but vulnerable components can enable known exploit paths if affected code is loaded or exposed.";

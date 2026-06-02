@@ -69,8 +69,11 @@ node scripts/security-audit.mjs --target <path-or-url> --mode passive --out secu
      - PHP: `composer audit`.
      - Multi-ecosystem: `osv-scanner`.
      - Secrets: built-in redacted regex scan plus `gitleaks` or `trufflehog` when installed.
-   - For websites, check HTTP headers, TLS, cookie flags, CORS, mixed-content hints, sensitive file exposure, and security.txt.
-   - For APIs, inspect OpenAPI/GraphQL schema if present, auth requirements, rate limits, object-level authorization, and error handling.
+   - For websites, check HTTP headers, TLS, cookie flags, CORS, mixed-content hints, sensitive file exposure, security.txt, SPA identity-workflow signals, hardcoded identity/contact placeholders, public token/config exposure, GraphQL schema/introspection signals, payment return drift, and auth-binding evidence gaps.
+   - For SPA identity workflows, inspect public bundles for login flows that send user/candidate identifiers together with government-ID, SSO, DigiLocker, Aadhaar-like, or KYC identity fields. Treat hardcoded placeholders as confirmed client-side defects; treat missing identity binding as Needs validation unless controlled server-side behavior proves it.
+   - For APIs, inspect OpenAPI/GraphQL schema if present, auth requirements, rate limits, object-level authorization, IDOR/BOLA hotspots, mass assignment, object property authorization, and error handling.
+   - For local auth/session code, review JWT decode/verify usage, ignored expiration, weak literal signing secrets, cookie flags, and browser-readable token storage. Mark review-only data-flow claims as Needs validation unless runtime/source proof confirms exploitability.
+   - For CI/CD, review GitHub Actions `pull_request_target`, write-all permissions, untrusted PR input execution, checkout trust boundaries, and floating action refs.
    - For local web apps, use the Browser plugin for visible behavior and localhost flows when UI verification matters.
    - For authorized website deep scans, active mode automatically uses the installed safe toolchain where available: HTTP method checks, CORS reflection probes, API schema discovery, httpx technology fingerprinting, SSLyze deep TLS checks on HTTPS, katana bounded crawling, ffuf high-signal content discovery, Nuclei templates, OWASP ZAP Docker baseline when Docker is running, and bundled standalone OWASP ZAP Quick Start when Docker is unavailable. Use subfinder/naabu only when subdomain or port discovery is explicitly in scope.
    - For authenticated, role-based, or business-logic testing, collect exact scope with `templates/authenticated-audit-scope.md` before running role/workflow checks.

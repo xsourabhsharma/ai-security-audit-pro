@@ -1,15 +1,16 @@
 {
   "name": "ai-security-audit-pro",
-  "version": "0.8.0",
+  "version": "0.8.2",
   "description": "Universal security-audit plugin and CLI engine for AI agents with OWASP-mapped reports.",
   "type": "module",
   "bin": {
     "security-audit-pro": "scripts/security-audit.mjs"
   },
   "scripts": {
-    "check": "node --check scripts/security-audit.mjs",
+    "check": "node --check scripts/security-audit.mjs && node --check scripts/security-audit-selftest.mjs",
     "smoke": "node scripts/security-audit.mjs --help",
-    "test": "npm run check && npm run smoke"
+    "selftest": "node scripts/security-audit-selftest.mjs",
+    "test": "npm run check && npm run smoke && npm run selftest"
   },
   "files": [
     ".codex-plugin/",
