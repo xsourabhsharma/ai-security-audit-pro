@@ -1,6 +1,6 @@
 {
   "name": "ai-security-audit-pro",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "description": "Universal security-audit plugin and CLI engine for AI agents with OWASP-mapped reports.",
   "type": "module",
   "bin": {

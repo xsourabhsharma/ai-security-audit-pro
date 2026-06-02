@@ -4,7 +4,7 @@
 
 ![CI](https://github.com/xsourabhsharma/ai-security-audit-pro/actions/workflows/ci.yml/badge.svg)
 [![npm](https://img.shields.io/npm/v/ai-security-audit-pro.svg)](https://www.npmjs.com/package/ai-security-audit-pro)
-![Source Version: 0.8.2](https://img.shields.io/badge/source-v0.8.2-0f766e.svg)
+![Source Version: 0.8.3](https://img.shields.io/badge/source-v0.8.3-0f766e.svg)
 [![ClawHub](https://img.shields.io/badge/ClawHub-ai--security--audit--pro-111827.svg)](https://clawhub.ai/plugins/ai-security-audit-pro)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Node.js](https://img.shields.io/badge/node-%3E%3D18-339933.svg)
@@ -63,9 +63,9 @@ The package is published on npm:
 
 - npm package: [ai-security-audit-pro](https://www.npmjs.com/package/ai-security-audit-pro)
 - GitHub source: [xsourabhsharma/ai-security-audit-pro](https://github.com/xsourabhsharma/ai-security-audit-pro)
-- Current source version: `0.8.2`
+- Current source version: `0.8.3`
 
-The npm badge shows the latest package already published to npm. After maintainers publish `0.8.2`, the badge will update automatically.
+The npm badge shows the latest package already published to npm. After maintainers publish `0.8.3`, the badge will update automatically.
 
 Install it globally when you want the CLI available to Codex, Claude Code, Gemini CLI, OpenCode, Hermes, OpenClaw, or any other shell-capable agent:
 
@@ -74,10 +74,16 @@ npm install -g ai-security-audit-pro
 security-audit-pro --target . --out security-audit-report.md --html-out security-audit-report.html
 ```
 
-ClawHub support is packaged through `openclaw.plugin.json`, but the ClawHub listing is pending registry approval/publish. After it is visible on ClawHub, OpenClaw users will be able to install it with:
+The package is also published on ClawHub as a community bundle plugin for OpenClaw. New ClawHub releases may show `scan: pending` for a short time while automated checks and indexing finish. OpenClaw users can install from ClawHub with:
 
 ```bash
 openclaw plugins install clawhub:ai-security-audit-pro
+```
+
+Inspect the ClawHub package metadata with:
+
+```bash
+clawhub package inspect ai-security-audit-pro
 ```
 
 ## Supported Agents
@@ -148,7 +154,7 @@ Run the local engine from source:
 node scripts/security-audit.mjs --target . --out security-audit-report.md --html-out security-audit-report.html
 ```
 
-OpenClaw path, once the ClawHub listing is live:
+OpenClaw path through ClawHub:
 
 ```bash
 openclaw plugins install clawhub:ai-security-audit-pro

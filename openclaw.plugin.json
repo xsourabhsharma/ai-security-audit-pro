@@ -2,7 +2,7 @@
   "id": "ai-security-audit-pro",
   "name": "AI Security Audit Pro Plugin",
   "description": "Defensive security-audit plugin and CLI for AI agents, with OWASP-mapped Markdown, HTML, JSON, and PDF reports for local projects, websites, and APIs.",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "author": "Security Audit Pro maintainers",
   "repository": "https://github.com/xsourabhsharma/ai-security-audit-pro",
   "license": "MIT",

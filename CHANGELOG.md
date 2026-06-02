@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.3
+
+- Updated README release status now that `0.8.2` is live on npm and ClawHub.
+- Documented the ClawHub install command and package inspection command.
+- Clarified that ClawHub releases may temporarily show `scan: pending` during automated checks and indexing.
+- Bumped package and plugin manifests to `0.8.3` for the next GitHub, npm, and ClawHub release.
+
 ## 0.8.2
 
 - Added local IDOR/BOLA route hotspot detection for object lookups without nearby authorization controls.
