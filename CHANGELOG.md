@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.4
+
+- Redesigned generated HTML reports into a printable report-document format instead of a website-style dashboard.
+- Added a report cover band, executive snapshot, severity cards, findings-at-a-glance table, severity distribution visual, safe validation panel, and friendly defensive report note.
+- Added a Markdown report snapshot table with overall assessment, severity totals, validation status totals, authorization status, and report ID.
+- Renamed generated report title from generic bug analysis wording to `AI Security Audit Pro Report`.
+- Bumped package and plugin manifests to `0.8.4`.
+
 ## 0.8.3
 
 - Updated README release status now that `0.8.2` is live on npm and ClawHub.

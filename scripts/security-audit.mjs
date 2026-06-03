@@ -3165,11 +3165,19 @@ function renderMarkdown(report) {
   }, {});
   const sections = ["critical", "high", "medium", "low", "info"];
 
-  let md = `# Bug Analysis Report for ${reportTargetName(report)}\n\n`;
+  let md = `# AI Security Audit Pro Report for ${reportTargetName(report)}\n\n`;
   md += `Generated: ${report.startedAt}\n\n`;
   md += `Target: \`${report.target}\`\n\n`;
   md += `Mode: \`${report.mode}\`\n\n`;
   md += `Profile: \`${report.profile || "balanced"}\`\n\n`;
+  md += `## Report Snapshot\n\n`;
+  md += `| Metric | Value |\n|---|---|\n`;
+  md += `| Overall assessment | ${overallRiskLabel(counts)} |\n`;
+  md += `| Total findings | ${report.findings.length} |\n`;
+  md += `| Critical / High / Medium / Low / Info | ${counts.critical || 0} / ${counts.high || 0} / ${counts.medium || 0} / ${counts.low || 0} / ${counts.info || 0} |\n`;
+  md += `| Confirmed / Likely / Needs validation | ${statusCounts.Confirmed || 0} / ${statusCounts.Likely || 0} / ${statusCounts["Needs validation"] || 0} |\n`;
+  md += `| Authorization flag | ${report.authorized ? "provided" : "not provided"} |\n`;
+  md += `| Report ID | ${reportId(report)} |\n\n`;
   md += `## Assessment Conclusion\n\n`;
   md += renderAssessmentConclusion(report, counts, statusCounts);
   md += `\n\n`;
@@ -3889,10 +3897,14 @@ function renderHtmlLegacy(report, markdown) {
 }
 
 function renderHtml(report, markdown) {
-  const title = `Bug Analysis Report - ${reportTargetName(report)}`;
+  const title = `AI Security Audit Pro Report - ${reportTargetName(report)}`;
   const counts = severityCounts(report);
   const statuses = validationStatusCounts(report);
   const sections = ["critical", "high", "medium", "low", "info"];
+  const total = report.findings.length;
+  const riskLabel = overallRiskLabel(counts);
+  const riskClass = overallRiskClass(counts);
+  const targetName = reportTargetName(report);
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -3900,83 +3912,238 @@ function renderHtml(report, markdown) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}</title>
   <style>
-    :root { color-scheme: light dark; --bg: #f6f7f9; --fg: #111827; --muted: #5b6472; --panel: #ffffff; --line: #d7dce3; --soft: #eef1f5; --critical: #991b1b; --high: #b45309; --medium: #a16207; --low: #2563eb; --info: #475569; }
-    @media (prefers-color-scheme: dark) { :root { --bg: #0f141b; --fg: #e6e9ef; --muted: #a7b0bd; --panel: #171d26; --line: #2e3745; --soft: #202835; --critical: #f87171; --high: #f59e0b; --medium: #facc15; --low: #60a5fa; --info: #cbd5e1; } }
+    :root {
+      color-scheme: light;
+      --paper: #ffffff;
+      --ink: #111827;
+      --muted: #607089;
+      --line: #dce6f1;
+      --soft: #f4f8fb;
+      --mint: #10a996;
+      --mint-soft: #e8fbf7;
+      --blue: #4f8df7;
+      --lavender: #7c5cff;
+      --critical: #e94755;
+      --high: #fb7c2d;
+      --medium: #f4b91f;
+      --low: #5b93ee;
+      --info: #20b7b2;
+      --shadow: 0 14px 38px rgba(31, 59, 88, 0.10);
+    }
     * { box-sizing: border-box; }
-    body { margin: 0; font: 14px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; background: var(--bg); color: var(--fg); }
-    main { max-width: 1180px; margin: 0 auto; padding: 28px 18px 56px; }
-    header { display: grid; gap: 14px; border-bottom: 1px solid var(--line); padding-bottom: 18px; margin-bottom: 22px; }
-    h1 { margin: 0; font-size: clamp(24px, 4vw, 38px); line-height: 1.08; letter-spacing: 0; }
-    h2 { margin: 0 0 12px; font-size: 20px; letter-spacing: 0; }
-    h3 { margin: 0; font-size: 17px; letter-spacing: 0; }
+    html { background: #edf5f8; }
+    body { margin: 0; color: var(--ink); font: 13px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; background: linear-gradient(180deg, #f8fcff 0%, #eef7f8 100%); }
+    main.report { max-width: 1120px; margin: 0 auto; padding: 28px 18px 48px; }
+    h1, h2, h3 { letter-spacing: 0; line-height: 1.16; }
+    h1 { margin: 0; font-size: clamp(30px, 4vw, 46px); }
+    h2 { margin: 0 0 14px; font-size: 18px; }
+    h3 { margin: 0; font-size: 14px; }
     p { margin: 0 0 10px; }
     code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, Liberation Mono, monospace; }
-    pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 8px 0 0; }
-    table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f7fafc; border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 8px 0 0; }
+    table { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
     th, td { border-bottom: 1px solid var(--line); padding: 9px 10px; text-align: left; vertical-align: top; }
-    th { background: var(--soft); font-weight: 700; }
+    th { background: #f3f8fb; font-size: 11px; text-transform: uppercase; color: #496079; letter-spacing: 0.02em; }
     tr:last-child td { border-bottom: 0; }
-    .meta, .muted { color: var(--muted); }
-    .pills { display: flex; flex-wrap: wrap; gap: 8px; }
-    .pill, .badge { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 4px 9px; background: var(--panel); font-size: 12px; font-weight: 700; }
-    .layout { display: grid; gap: 18px; }
-    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
-    .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
-    .stat span { display: block; color: var(--muted); font-size: 12px; text-transform: uppercase; }
-    .stat strong { display: block; font-size: 26px; line-height: 1.15; }
-    .section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
-    .finding { border: 1px solid var(--line); border-left-width: 5px; border-radius: 8px; padding: 14px; margin: 12px 0; background: color-mix(in srgb, var(--panel) 92%, var(--soft)); }
-    .finding.critical { border-left-color: var(--critical); }
-    .finding.high { border-left-color: var(--high); }
-    .finding.medium { border-left-color: var(--medium); }
-    .finding.low { border-left-color: var(--low); }
-    .finding.info { border-left-color: var(--info); }
+    .cover, .page { background: rgba(255, 255, 255, 0.94); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
+    .cover { padding: 26px; margin-bottom: 18px; overflow: hidden; position: relative; }
+    .cover::after { content: ""; position: absolute; inset: auto -40px -70px auto; width: 220px; height: 220px; background: radial-gradient(circle, rgba(16,169,150,0.18), transparent 65%); pointer-events: none; }
+    .brand-row { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 24px; position: relative; z-index: 1; }
+    .brand { display: flex; gap: 12px; align-items: center; min-width: 220px; }
+    .logo { width: 44px; height: 44px; border-radius: 8px; display: grid; place-items: center; color: #ffffff; background: linear-gradient(135deg, #11b7a4, #1778d7); box-shadow: 0 10px 22px rgba(16,169,150,0.22); }
+    .logo svg { width: 26px; height: 26px; }
+    .brand strong { display: block; font-size: 18px; }
+    .brand span { color: var(--muted); }
+    .assessment { min-width: 210px; border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; background: #fff; }
+    .assessment small { display: block; color: var(--muted); }
+    .assessment strong { display: block; margin-top: 4px; font-size: 24px; }
+    .risk-critical strong, .risk-high strong { color: var(--critical); }
+    .risk-medium strong { color: var(--high); }
+    .risk-low strong { color: var(--low); }
+    .risk-info strong, .risk-clean strong { color: var(--mint); }
+    .cover-grid { display: grid; grid-template-columns: 1.45fr minmax(240px, 0.8fr); gap: 22px; align-items: end; position: relative; z-index: 1; }
+    .target { margin-top: 10px; color: var(--muted); font-size: 16px; }
+    .target strong { color: var(--mint); }
+    .meta-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .meta-card { border: 1px solid var(--line); background: #fbfdff; border-radius: 8px; padding: 10px 12px; }
+    .meta-card span { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; }
+    .meta-card strong { display: block; margin-top: 2px; }
+    .page { padding: 20px; margin: 18px 0; }
+    .section { margin: 18px 0; }
+    .section-title { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 14px; }
+    .section-title span { color: var(--muted); font-size: 12px; }
+    .grid { display: grid; gap: 14px; }
+    .grid.two { grid-template-columns: minmax(0, 1fr) minmax(280px, 0.8fr); }
+    .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .severity-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+    .stat { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: linear-gradient(180deg, #fff, #f9fcfd); min-height: 112px; }
+    .stat .label { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #31445a; font-weight: 700; }
+    .dot { width: 10px; height: 10px; border-radius: 99px; display: inline-block; background: var(--info); }
+    .stat strong { display: block; margin-top: 10px; font-size: 30px; line-height: 1; }
+    .stat small { color: var(--muted); }
+    .bar { height: 6px; margin-top: 14px; border-radius: 999px; background: #e7eef6; overflow: hidden; }
+    .bar i { display: block; height: 100%; width: var(--pct); border-radius: inherit; background: var(--color); }
+    .critical { --color: var(--critical); }
+    .high { --color: var(--high); }
+    .medium { --color: var(--medium); }
+    .low { --color: var(--low); }
+    .info { --color: var(--info); }
+    .panel { border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 16px; }
+    .conclusion { background: linear-gradient(135deg, #f2fffc, #ffffff 58%, #f7fbff); }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .chip, .badge { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 5px 9px; background: #fff; font-size: 11px; font-weight: 700; }
+    .chip.confirmed { color: #087f73; background: #e8fbf7; border-color: #bcebe1; }
+    .chip.likely { color: #a35400; background: #fff5dc; border-color: #f5df9f; }
+    .chip.validation { color: #5b35c8; background: #f0ebff; border-color: #d7ccff; }
+    .badge.critical { color: #b91c1c; background: #fff1f2; border-color: #fecdd3; }
+    .badge.high { color: #9a4b0d; background: #fff7ed; border-color: #fed7aa; }
+    .badge.medium { color: #8a5b00; background: #fff8db; border-color: #fde68a; }
+    .badge.low { color: #1d4ed8; background: #eff6ff; border-color: #bfdbfe; }
+    .badge.info { color: #0f766e; background: #effdfa; border-color: #99f6e4; }
+    .donut-wrap { display: grid; grid-template-columns: 150px 1fr; gap: 16px; align-items: center; }
+    .donut { width: 148px; height: 148px; border-radius: 50%; background: conic-gradient(var(--critical) 0 var(--criticalEnd), var(--high) var(--criticalEnd) var(--highEnd), var(--medium) var(--highEnd) var(--mediumEnd), var(--low) var(--mediumEnd) var(--lowEnd), var(--info) var(--lowEnd) 100%); position: relative; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.85); }
+    .donut::after { content: "${escapeHtml(String(total))}\\A Total"; white-space: pre; position: absolute; inset: 28px; border-radius: 50%; background: #fff; display: grid; place-items: center; text-align: center; font-weight: 800; font-size: 28px; color: var(--ink); line-height: 1.05; box-shadow: inset 0 0 0 1px var(--line); }
+    .legend { display: grid; gap: 8px; }
+    .legend-row { display: grid; grid-template-columns: 12px 1fr auto; gap: 8px; align-items: center; color: #30445d; }
+    .findings-table td:first-child { font-weight: 700; }
+    .finding { border: 1px solid var(--line); border-left: 5px solid var(--color, var(--line)); border-radius: 8px; padding: 14px; margin: 12px 0; background: #fff; page-break-inside: avoid; }
     .finding-head { display: flex; gap: 10px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; margin-bottom: 10px; }
-    .badge.critical { color: var(--critical); }
-    .badge.high { color: var(--high); }
-    .badge.medium { color: var(--medium); }
-    .badge.low { color: var(--low); }
-    .badge.info { color: var(--info); }
-    .finding-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+    .finding-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
     .field { border-top: 1px solid var(--line); padding-top: 9px; }
-    .field strong { display: block; margin-bottom: 3px; }
+    .field strong { display: block; margin-bottom: 3px; color: #33465c; }
     .evidence { word-break: break-word; }
-    details { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
-    summary { cursor: pointer; font-weight: 700; }
+    .safe-list { display: grid; gap: 9px; }
+    .safe-step { display: grid; grid-template-columns: 26px 1fr auto; gap: 10px; align-items: start; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #fbfefd; }
+    .safe-step b { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--mint-soft); color: #087f73; }
+    .cute-note { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; border: 1px solid #bcebe1; background: #f1fffb; border-radius: 8px; padding: 14px; color: #0d4f49; }
+    .mascot { width: 64px; height: 64px; border-radius: 24px 24px 28px 28px; background: linear-gradient(135deg, #83f0dd, #d8fff7); position: relative; border: 1px solid #a8e8df; }
+    .mascot::before, .mascot::after { content: ""; position: absolute; top: 24px; width: 6px; height: 8px; border-radius: 99px; background: #0a5b55; }
+    .mascot::before { left: 22px; }
+    .mascot::after { right: 22px; }
+    .mascot i { position: absolute; left: 22px; bottom: 17px; width: 20px; height: 10px; border-bottom: 2px solid #0a5b55; border-radius: 0 0 99px 99px; }
+    details { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-top: 18px; }
+    summary { cursor: pointer; font-weight: 800; }
     .empty { color: var(--muted); font-style: italic; }
+    .muted, .meta { color: var(--muted); }
+    .appendix pre { max-height: 520px; overflow: auto; }
+    @media (max-width: 920px) {
+      .cover-grid, .grid.two, .grid.three, .donut-wrap { grid-template-columns: 1fr; }
+      .severity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .brand-row { flex-direction: column; }
+      .assessment { width: 100%; }
+    }
+    @media print {
+      html, body { background: #fff; }
+      main.report { max-width: none; padding: 0; }
+      .cover, .page { box-shadow: none; border-color: #cfdbe8; break-inside: avoid; margin: 0 0 14px; }
+      .page { page-break-inside: avoid; }
+      details.appendix { display: none; }
+      a { color: inherit; text-decoration: none; }
+    }
   </style>
 </head>
 <body>
-<main>
-  <header>
-    <h1>${escapeHtml(title)}</h1>
-    <div class="meta">Generated ${escapeHtml(report.startedAt)}</div>
-    <div class="pills">
-      <span class="pill">Target: ${escapeHtml(report.target)}</span>
-      <span class="pill">Mode: ${escapeHtml(report.mode)}</span>
-      <span class="pill">Profile: ${escapeHtml(report.profile || "balanced")}</span>
-      <span class="pill">Authorization: ${report.authorized ? "provided" : "not provided"}</span>
+<main class="report">
+  <section class="cover">
+    <div class="brand-row">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">${shieldSvg()}</div>
+        <div><strong>AI Security Audit Pro</strong><span>Professional security report</span></div>
+      </div>
+      <aside class="assessment ${escapeHtml(riskClass)}">
+        <small>Overall Assessment</small>
+        <strong>${escapeHtml(riskLabel)}</strong>
+      </aside>
     </div>
-  </header>
-  <div class="layout">
-    <section class="stats">
-      ${sections.map((severity) => `<div class="stat"><span>${severity}</span><strong>${counts[severity] || 0}</strong></div>`).join("")}
-      <div class="stat"><span>Confirmed</span><strong>${statuses.Confirmed || 0}</strong></div>
-      <div class="stat"><span>Likely</span><strong>${statuses.Likely || 0}</strong></div>
-      <div class="stat"><span>Needs Validation</span><strong>${statuses["Needs validation"] || 0}</strong></div>
-    </section>
-    <section class="section"><h2>Assessment Conclusion</h2>${htmlParagraphs(renderAssessmentConclusion(report, counts, statuses))}</section>
-    <section class="section"><h2>Key Risk Summary</h2>${htmlMarkdownList(renderKeyRiskSummary(report))}</section>
-    <section class="section"><h2>Confirmed Vulnerabilities / Risks</h2>${renderConfirmedRisksHtml(report)}</section>
-    <section class="section"><h2>Scope And Authorization</h2>${htmlMarkdownList(renderScopeAndAuthorization(report))}</section>
-    <section class="section"><h2>Auth And Business Logic Scope</h2>${htmlMarkdownList(renderAuthScope(report))}</section>
+    <div class="cover-grid">
+      <div>
+        <h1>Security Audit Report</h1>
+        <div class="target">Target: <strong>${escapeHtml(targetName)}</strong></div>
+        <div class="chips">
+          <span class="chip confirmed">${statuses.Confirmed || 0} Confirmed</span>
+          <span class="chip likely">${statuses.Likely || 0} Likely</span>
+          <span class="chip validation">${statuses["Needs validation"] || 0} Needs validation</span>
+        </div>
+      </div>
+      <div class="meta-grid">
+        <div class="meta-card"><span>Generated</span><strong>${escapeHtml(formatDateTime(report.startedAt))}</strong></div>
+        <div class="meta-card"><span>Report ID</span><strong>${escapeHtml(reportId(report))}</strong></div>
+        <div class="meta-card"><span>Mode</span><strong>${escapeHtml(report.mode)} / ${escapeHtml(report.profile || "balanced")}</strong></div>
+        <div class="meta-card"><span>Authorization</span><strong>${report.authorized ? "provided" : "not provided"}</strong></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="section-title"><h2>Executive Snapshot</h2><span>${total} total finding(s)</span></div>
+    <div class="severity-grid">${renderSeverityCardsHtml(counts, total)}</div>
+  </section>
+
+  <section class="page">
+    <div class="grid two">
+      <div class="panel conclusion">
+        <div class="section-title"><h2>Assessment Conclusion</h2><span>Evidence-based summary</span></div>
+        ${htmlParagraphs(renderAssessmentConclusion(report, counts, statuses))}
+        <div class="chips">
+          <span class="chip confirmed">Confirmed ${statuses.Confirmed || 0}</span>
+          <span class="chip likely">Likely ${statuses.Likely || 0}</span>
+          <span class="chip validation">Needs validation ${statuses["Needs validation"] || 0}</span>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="section-title"><h2>Findings By Severity</h2><span>Distribution</span></div>
+        ${renderSeverityDonutHtml(counts, total)}
+      </div>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="section-title"><h2>Findings At A Glance</h2><span>Top reportable items</span></div>
+    ${renderFindingsSummaryTableHtml(report)}
+  </section>
+
+  <section class="page">
+    <div class="section-title"><h2>Confirmed Vulnerabilities / Risks</h2><span>Concrete observations</span></div>
+    ${renderConfirmedRisksHtml(report)}
+  </section>
+
+  <section class="page">
+    <div class="grid two">
+      <div class="panel"><h2>Coverage Matrix</h2>${renderCoverageMatrixHtml(report)}</div>
+      <div class="panel"><h2>Safe Validation Steps</h2>${renderSafeValidationHtml(report)}</div>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="grid two">
+      <div class="panel"><h2>Reviewed Surfaces</h2>${renderReviewedSurfacesHtml(report)}</div>
+      <div class="panel"><h2>Tool Execution</h2>${renderToolsHtml(report)}</div>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="section-title"><h2>Detailed Findings</h2><span>Grouped by severity</span></div>
     ${sections.map((severity) => renderHtmlSeveritySection(severity, report)).join("")}
-    <section class="section"><h2>Reviewed Surfaces</h2>${renderReviewedSurfacesHtml(report)}</section>
-    <section class="section"><h2>Coverage Matrix</h2>${renderCoverageMatrixHtml(report)}</section>
-    <section class="section"><h2>Tool Execution</h2>${renderToolsHtml(report)}</section>
-    <section class="section"><h2>Skipped Checks And Residual Risk</h2>${renderSkippedHtml(report)}</section>
-    <details><summary>Full Markdown Report</summary><pre>${escapeHtml(markdown)}</pre></details>
-  </div>
+  </section>
+
+  <section class="page">
+    <div class="grid two">
+      <div class="panel"><h2>Scope And Authorization</h2>${htmlMarkdownList(renderScopeAndAuthorization(report))}</div>
+      <div class="panel"><h2>Auth And Business Logic Scope</h2>${htmlMarkdownList(renderAuthScope(report))}</div>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="section-title"><h2>Skipped Checks And Residual Risk</h2><span>Honest coverage limits</span></div>
+    ${renderSkippedHtml(report)}
+  </section>
+
+  <section class="cute-note">
+    <div class="mascot" aria-hidden="true"><i></i></div>
+    <div><strong>Defensive report note</strong><br>This report is designed to be clear, non-destructive, and review-ready. Validate uncertain findings with controlled test accounts, source review, logs, or staging proof before treating them as exploitable.</div>
+  </section>
+
+  <details class="appendix"><summary>Appendix: Full Markdown Report</summary><pre>${escapeHtml(markdown)}</pre></details>
 </main>
 </body>
 </html>
@@ -3996,6 +4163,122 @@ function validationStatusCounts(report) {
     acc[status] = (acc[status] || 0) + 1;
     return acc;
   }, {});
+}
+
+function overallRiskLabel(counts) {
+  if (counts.critical) return "Critical Risk";
+  if (counts.high) return "High Risk";
+  if (counts.medium) return "Medium Risk";
+  if (counts.low) return "Low Risk";
+  if (counts.info) return "Informational";
+  return "No Findings";
+}
+
+function overallRiskClass(counts) {
+  if (counts.critical) return "risk-critical";
+  if (counts.high) return "risk-high";
+  if (counts.medium) return "risk-medium";
+  if (counts.low) return "risk-low";
+  if (counts.info) return "risk-info";
+  return "risk-clean";
+}
+
+function reportId(report) {
+  const stamp = String(report.startedAt || new Date().toISOString()).slice(0, 10).replace(/-/g, "");
+  const target = reportTargetName(report)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 18)
+    .replace(/^-|-$/g, "") || "target";
+  return `ASAP-${stamp}-${target}`;
+}
+
+function formatDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value || "");
+  return date.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+}
+
+function severityPercent(count, total) {
+  if (!total) return 0;
+  return Math.round((count / total) * 100);
+}
+
+function renderSeverityCardsHtml(counts, total) {
+  const items = [
+    ["critical", "Critical"],
+    ["high", "High"],
+    ["medium", "Medium"],
+    ["low", "Low"],
+    ["info", "Info"]
+  ];
+  const cards = items.map(([key, label]) => {
+    const value = counts[key] || 0;
+    const pct = severityPercent(value, total);
+    return `<article class="stat ${key}">
+      <div class="label"><span>${escapeHtml(label)}</span><span class="dot"></span></div>
+      <strong>${value}</strong>
+      <small>${pct}% of total findings</small>
+      <div class="bar" style="--pct:${pct}%; --color: var(--${key})"><i></i></div>
+    </article>`;
+  }).join("");
+  return `${cards}<article class="stat">
+    <div class="label"><span>Total Findings</span><span class="dot" style="background: var(--mint)"></span></div>
+    <strong>${total}</strong>
+    <small>Across all severities</small>
+    <div class="bar" style="--pct:100%; --color: var(--mint)"><i></i></div>
+  </article>`;
+}
+
+function renderSeverityDonutHtml(counts, total) {
+  const safeTotal = total || 1;
+  const c = ((counts.critical || 0) / safeTotal) * 100;
+  const h = c + ((counts.high || 0) / safeTotal) * 100;
+  const m = h + ((counts.medium || 0) / safeTotal) * 100;
+  const l = m + ((counts.low || 0) / safeTotal) * 100;
+  const style = `--criticalEnd:${c.toFixed(2)}%; --highEnd:${h.toFixed(2)}%; --mediumEnd:${m.toFixed(2)}%; --lowEnd:${l.toFixed(2)}%`;
+  const rows = [
+    ["critical", "Critical"],
+    ["high", "High"],
+    ["medium", "Medium"],
+    ["low", "Low"],
+    ["info", "Info"]
+  ].map(([key, label]) => {
+    const value = counts[key] || 0;
+    return `<div class="legend-row"><span class="dot" style="background: var(--${key})"></span><span>${escapeHtml(label)}</span><strong>${value} (${severityPercent(value, total)}%)</strong></div>`;
+  }).join("");
+  return `<div class="donut-wrap"><div class="donut" style="${escapeHtml(style)}"></div><div class="legend">${rows}</div></div>`;
+}
+
+function renderFindingsSummaryTableHtml(report) {
+  const findings = report.findings
+    .filter((finding) => severityRank[finding.severity] >= severityRank.low)
+    .slice(0, 12);
+  if (!findings.length) return `<p class="empty">No findings recorded by the checks that ran.</p>`;
+  return `<table class="findings-table"><thead><tr><th>Finding</th><th>Severity</th><th>Status</th><th>Affected Surface</th></tr></thead><tbody>${
+    findings.map((finding) => `<tr>
+      <td>${escapeHtml(finding.title)}</td>
+      <td><span class="badge ${escapeHtml(finding.severity)}">${escapeHtml(capitalize(finding.severity))}</span></td>
+      <td>${escapeHtml(findingStatus(finding))}</td>
+      <td>${finding.location ? `<code>${escapeHtml(finding.location)}</code>` : ""}</td>
+    </tr>`).join("")
+  }</tbody></table>`;
+}
+
+function renderSafeValidationHtml(report) {
+  const findings = report.findings
+    .filter((finding) => severityRank[finding.severity] >= severityRank.medium)
+    .slice(0, 5);
+  if (!findings.length) return `<p class="empty">No medium-or-higher findings need validation steps.</p>`;
+  return `<div class="safe-list">${findings.map((finding, index) => {
+    const poc = safePocForFinding(finding, report);
+    return `<div class="safe-step"><b>${index + 1}</b><div><strong>${escapeHtml(finding.title)}</strong><br><span class="muted">${escapeHtml(poc?.summary || "Validate safely with source review or staging proof.")}</span></div><span class="badge">Safe</span></div>`;
+  }).join("")}</div>`;
+}
+
+function shieldSvg() {
+  return `<svg viewBox="0 0 24 24" role="img" aria-label="Shield"><path fill="currentColor" d="M12 2 4.5 5.2v5.6c0 4.7 3.1 9 7.5 10.5 4.4-1.5 7.5-5.8 7.5-10.5V5.2L12 2Zm-1.1 13.7-3.3-3.3 1.4-1.4 1.9 1.9 4.4-4.4 1.4 1.4-5.8 5.8Z"/></svg>`;
 }
 
 function renderHtmlSeveritySection(severity, report) {
