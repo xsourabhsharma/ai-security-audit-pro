@@ -4,7 +4,7 @@
 
 ![CI](https://github.com/xsourabhsharma/ai-security-audit-pro/actions/workflows/ci.yml/badge.svg)
 [![npm](https://img.shields.io/npm/v/ai-security-audit-pro.svg)](https://www.npmjs.com/package/ai-security-audit-pro)
-![Source Version: 0.8.4](https://img.shields.io/badge/source-v0.8.4-0f766e.svg)
+![Source Version: 0.8.5](https://img.shields.io/badge/source-v0.8.5-0f766e.svg)
 [![ClawHub](https://img.shields.io/badge/ClawHub-ai--security--audit--pro-111827.svg)](https://clawhub.ai/plugins/ai-security-audit-pro)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Node.js](https://img.shields.io/badge/node-%3E%3D18-339933.svg)
@@ -63,9 +63,9 @@ The package is published on npm:
 
 - npm package: [ai-security-audit-pro](https://www.npmjs.com/package/ai-security-audit-pro)
 - GitHub source: [xsourabhsharma/ai-security-audit-pro](https://github.com/xsourabhsharma/ai-security-audit-pro)
-- Current source version: `0.8.4`
+- Current source version: `0.8.5`
 
-The npm badge shows the latest package already published to npm. After maintainers publish `0.8.4`, the badge will update automatically.
+The npm badge shows the latest package already published to npm. After maintainers publish `0.8.5`, the badge will update automatically.
 
 Install it globally when you want the CLI available to Codex, Claude Code, Gemini CLI, OpenCode, Hermes, OpenClaw, or any other shell-capable agent:
 
@@ -186,6 +186,12 @@ Deep authorized active scan:
 node scripts/security-audit.mjs --target https://staging.example.com --mode active --profile deep --authorized --scope-file templates/authenticated-audit-scope.md --out report.md --html-out report.html --pdf-out report.pdf
 ```
 
+Deep narrative report without active probing:
+
+```bash
+node scripts/security-audit.mjs --target . --mode passive --report-depth deep --out report.md --html-out report.html
+```
+
 JSON for agent workflows:
 
 ```bash
@@ -206,6 +212,12 @@ Active profiles:
 - `balanced`: default profile.
 - `deep`: broader non-destructive coverage for explicitly authorized targets.
 
+Report depth:
+
+- `standard`: executive report, findings, coverage, validation steps, and residual risk.
+- `deep`: adds reference-style manual-review sections: component inventory, reconstructed review flow, security invariants, trust assumptions, boundary conditions, exploitability narrative, evidence index, surface index, final assessment, and prioritized remediation/audit tasks.
+- If `--report-depth` is omitted, `--profile deep` automatically selects deep report depth; otherwise reports use standard depth.
+
 ## What A Report Looks Like
 
 The output is meant to read like a real security handoff, not a raw tool dump. HTML reports use a printable report-document layout with a cover band, executive snapshot, severity cards, findings table, coverage matrix, safe validation panel, and detailed appendix.
@@ -217,6 +229,16 @@ AI Security Audit Pro Report
   Finding Overview
   Key Risk Summary
   Confirmed Vulnerabilities / Risks
+  Component Inventory
+  Reconstructed Review Flow
+  Core Security Invariants
+  Trust Assumptions
+  Boundary Conditions Reviewed
+  Exploitability Assessment
+  Evidence Index
+  Prioritized Remediation And Audit Tasks
+  Source File And Surface Index
+  Final Assessment
   Scope And Authorization
   Auth And Business Logic Scope
   Critical Severity Findings

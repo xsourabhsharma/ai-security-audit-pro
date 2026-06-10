@@ -16,6 +16,7 @@ async function main() {
   try {
     await writeFixture(temp);
     const reportPath = path.join(temp, "report.json");
+    const deepReportPath = path.join(temp, "deep-report.md");
     const result = await runNode([
       cli,
       "--target", temp,
@@ -43,6 +44,25 @@ async function main() {
     assertHasIdPrefix(ids, "public-sensitive-env-");
     assertHasIdPrefix(ids, "browser-token-storage-");
     assertHasIdPrefix(ids, "gha-pr-target-write-all-");
+
+    const deepResult = await runNode([
+      cli,
+      "--target", temp,
+      "--profile", "deep",
+      "--out", deepReportPath,
+      "--no-tools"
+    ], root);
+
+    if (deepResult.error || deepResult.code !== 0) {
+      throw new Error(`CLI deep report self-test failed: ${deepResult.error || deepResult.stderr || deepResult.stdout}`);
+    }
+
+    const deepReport = await fs.readFile(deepReportPath, "utf8");
+    assertIncludes(deepReport, "## Component Inventory");
+    assertIncludes(deepReport, "## Reconstructed Review Flow");
+    assertIncludes(deepReport, "## Core Security Invariants");
+    assertIncludes(deepReport, "## Exploitability Assessment");
+    assertIncludes(deepReport, "## Evidence Index");
 
     console.log("security-audit-pro selftest passed");
   } finally {
@@ -116,6 +136,12 @@ function assertHasCategory(categories, category) {
 function assertHasIdPrefix(ids, prefix) {
   if (![...ids].some((id) => id.startsWith(prefix))) {
     throw new Error(`Expected finding id prefix was not detected: ${prefix}`);
+  }
+}
+
+function assertIncludes(text, expected) {
+  if (!text.includes(expected)) {
+    throw new Error(`Expected deep report text was not found: ${expected}`);
   }
 }
 

@@ -59,6 +59,7 @@ function parseArgs(argv) {
     pdfOut: "",
     diffBase: "",
     profile: "balanced",
+    reportDepth: "",
     scopeFile: "",
     json: false,
     authorized: process.env.SECURITY_AUDIT_AUTHORIZED === "1",
@@ -85,6 +86,8 @@ function parseArgs(argv) {
       args.diffBase = argv[++i];
     } else if (arg === "--profile") {
       args.profile = argv[++i];
+    } else if (arg === "--report-depth") {
+      args.reportDepth = argv[++i];
     } else if (arg === "--scope-file") {
       args.scopeFile = argv[++i];
     } else if (arg === "--json") {
@@ -108,6 +111,12 @@ function parseArgs(argv) {
   if (!["safe", "balanced", "deep"].includes(args.profile)) {
     throw new Error("--profile must be safe, balanced, or deep");
   }
+  if (!args.reportDepth) {
+    args.reportDepth = args.profile === "deep" ? "deep" : "standard";
+  }
+  if (!["standard", "deep"].includes(args.reportDepth)) {
+    throw new Error("--report-depth must be standard or deep");
+  }
   return args;
 }
 
@@ -126,6 +135,7 @@ Options:
   --no-tools       Skip external scanner commands.
   --authorized     Required for standard/active URL probing.
   --profile NAME   Active URL profile: safe, balanced, or deep. Default: balanced.
+  --report-depth N Report narrative depth: standard or deep. Default: deep when --profile deep, otherwise standard.
   --scope-file F   Auth/business/API scope file to include in the report.
   --diff-base REF  Local project mode: scan changed files from REF instead of every collected file.
   --html-out FILE  Also write a self-contained HTML report.
@@ -149,6 +159,7 @@ async function main() {
     startedAt,
     mode: args.mode,
     profile: args.profile,
+    reportDepth: args.reportDepth,
     authorized: args.authorized,
     target: args.target,
     findings: [],
@@ -3196,6 +3207,10 @@ function renderMarkdown(report) {
   md += `## Threat Model Summary\n\n`;
   md += `${renderThreatModelSummary(report)}\n\n`;
 
+  if (isDeepReport(report)) {
+    md += renderDeepReportSections(report);
+  }
+
   md += `## Auth And Business Logic Scope\n\n`;
   md += `${renderAuthScope(report)}\n\n`;
 
@@ -3815,6 +3830,279 @@ function renderThreatModelSummary(report) {
   ].join("\n");
 }
 
+function isDeepReport(report) {
+  return report.reportDepth === "deep" || report.profile === "deep";
+}
+
+function renderDeepReportSections(report) {
+  return [
+    ["Component Inventory", renderDeepComponentInventory(report)],
+    ["Reconstructed Review Flow", renderDeepReviewFlow(report)],
+    ["Core Security Invariants", renderDeepSecurityInvariants(report)],
+    ["Trust Assumptions", renderDeepTrustAssumptions(report)],
+    ["Boundary Conditions Reviewed", renderDeepBoundaryConditions(report)],
+    ["Exploitability Assessment", renderDeepExploitabilityAssessment(report)],
+    ["Evidence Index", renderDeepEvidenceIndex(report)],
+    ["Prioritized Remediation And Audit Tasks", renderDeepRemediationTasks(report)],
+    ["Source File And Surface Index", renderDeepSurfaceIndex(report)],
+    ["Final Assessment", renderDeepFinalAssessment(report)]
+  ].map(([title, body]) => `## ${title}\n\n${body}\n\n`).join("");
+}
+
+function renderDeepComponentInventory(report) {
+  if (report.inventory.kind === "url") {
+    const rows = [
+      ["Primary origin", report.inventory.origin || report.target || "unknown"],
+      ["Final URL", report.inventory.finalUrl || "not recorded"],
+      ["HTTP status", report.inventory.status || "not recorded"],
+      ["TLS protocol", report.inventory.tlsProtocol || "not recorded"],
+      ["Certificate expiry", report.inventory.certificateExpires || "not recorded"],
+      ["Allowed methods", report.inventory.allowedMethods || "not advertised"],
+      ["Discovered API docs", String(report.inventory.discoveredApiDocs?.length || 0)],
+      ["Crawled URLs", String(report.inventory.crawledUrls || 0)],
+      ["Discovered forms", String(report.inventory.discoveredForms?.length || 0)],
+      ["Content discovery matches", String(report.inventory.contentDiscoveryMatches?.length || 0)]
+    ];
+    return markdownKeyValueTable(rows);
+  }
+
+  const endpointMethods = summarizeEndpointMethods(report.inventory.endpoints || []);
+  const rows = [
+    ["Project root", report.inventory.root || report.target || "unknown"],
+    ["Stacks", report.inventory.stacks?.join(", ") || "unknown"],
+    ["Frameworks", report.inventory.frameworks?.join(", ") || "none detected"],
+    ["Scanned / collected files", `${report.inventory.scannedFiles ?? 0} / ${report.inventory.collectedFiles ?? 0}`],
+    ["Lockfiles", report.inventory.lockfiles?.join(", ") || "none detected"],
+    ["Node dependencies", summarizeNodeDependencyCounts(report.inventory.nodeDependencies)],
+    ["API artifacts", report.inventory.apiArtifacts?.length ? report.inventory.apiArtifacts.join(", ") : "none detected"],
+    ["Route declarations", `${report.inventory.endpoints?.length || 0}${endpointMethods ? ` (${endpointMethods})` : ""}`],
+    ["GitHub workflow files", String(report.inventory.githubWorkflowFiles || 0)],
+    ["Diff scope", report.inventory.diffBase ? `${report.inventory.diffBase} (${report.inventory.diffFiles || 0} changed files)` : "full collected scope"]
+  ];
+  return markdownKeyValueTable(rows);
+}
+
+function renderDeepReviewFlow(report) {
+  if (report.inventory.kind === "url") {
+    return [
+      "1. Resolved the supplied URL and recorded final response metadata.",
+      "2. Reviewed browser security controls: HTTPS behavior, response headers, cookies, CORS, and public response-body signals.",
+      "3. In authorized standard/active modes, checked common exposed paths, HTTP methods, API documentation endpoints, and optional scanner output.",
+      "4. For deep active profiles, folded crawler, content-discovery, TLS, DAST, and template findings into the same validation-status model.",
+      "5. Converted observations into reportable findings only when evidence was available; uncertain behavior remains marked Needs validation."
+    ].join("\n");
+  }
+
+  return [
+    "1. Built a local file inventory with size and directory exclusions before scanning source-like files.",
+    "2. Detected stack, framework, dependency, lockfile, route, API-artifact, CI/CD, and auth/session surfaces.",
+    "3. Ran high-signal source checks for injection sinks, unsafe execution, XSS sinks, SSRF/file/deserialization hotspots, secrets, IDOR/BOLA, mass assignment, JWT/session mistakes, public frontend config, GraphQL signals, and workflow trust-boundary risks.",
+    "4. Ran optional ecosystem scanners when available, then recorded missing tools honestly instead of implying coverage.",
+    "5. Sorted, mapped, and narrated findings by severity, confidence, validation status, affected surface, remediation, and safe validation path."
+  ].join("\n");
+}
+
+function renderDeepSecurityInvariants(report) {
+  const invariants = new Set([
+    "Authentication checks must run before protected data is returned or state is changed.",
+    "Object-level authorization must bind every user, tenant, role, and object identifier on the server side.",
+    "Untrusted input must not control code execution, command arguments, query syntax, filesystem paths, SSRF destinations, deserializers, XML parsers, or template/HTML sinks.",
+    "Secrets and privileged credentials must not be present in source, logs, public frontend bundles, build artifacts, or generated reports.",
+    "Session-bearing tokens must be verified cryptographically and protected against browser theft, replay, downgrade, and weak cookie attributes.",
+    "CI/CD workflows must not execute untrusted pull-request content with privileged tokens."
+  ]);
+
+  if (report.inventory.kind === "url") {
+    invariants.add("HTTPS redirects, HSTS, CSP, framing, cookie flags, CORS, and referrer policy must protect browser entry points before sensitive workflows execute.");
+    invariants.add("Public API documentation, exposed files, security.txt, and JavaScript bundles must not reveal privileged implementation detail or server-side trust assumptions.");
+  }
+  if (hasFindingCategory(report, "Payment workflow")) {
+    invariants.add("Payment return and callback URLs must be server-controlled, host-allowlisted, and bound to the active order/session.");
+  }
+  if (hasFindingCategory(report, "API security")) {
+    invariants.add("API schemas, GraphQL operations, object identifiers, and admin/user endpoints must be treated as attacker-known and authorized per operation.");
+  }
+  if (hasFindingCategory(report, "Dependency vulnerability")) {
+    invariants.add("Known-vulnerable dependencies require reachability triage, upgrade planning, and regression testing before release.");
+  }
+
+  return [...invariants].map((item) => `- ${item}`).join("\n");
+}
+
+function renderDeepTrustAssumptions(report) {
+  const assumptions = [
+    "Scanner evidence is treated as a lead unless the observed behavior directly proves the security impact.",
+    "Needs-validation findings require source review, controlled test accounts, staging proof, logs, or maintainer confirmation before being called exploitable.",
+    "The report intentionally avoids credential attacks, destructive payloads, persistence, data dumping, denial-of-service, or testing outside the approved target.",
+    "Secret evidence is redacted; any confirmed live credential must be rotated outside this report."
+  ];
+
+  if (!report.authorized && report.inventory.kind === "url") {
+    assumptions.push("Because the URL target was not marked authorized, deeper probing and active DAST are out of scope for this run.");
+  }
+  if (!report.inventory.authScope) {
+    assumptions.push("No authenticated scope file was supplied, so role-based, tenant-boundary, payment, upload, and business-logic conclusions remain incomplete.");
+  }
+  if (report.tools?.some((tool) => tool.status === "missing")) {
+    assumptions.push("Some optional scanner tools were missing; their coverage is listed in Tool Execution and Coverage Matrix instead of being inferred.");
+  }
+
+  return assumptions.map((item) => `- ${item}`).join("\n");
+}
+
+function renderDeepBoundaryConditions(report) {
+  const coverage = uniqueCoverage(report.coverage || []);
+  const reviewed = coverage.filter((item) => /reviewed/i.test(item.status)).slice(0, 10);
+  const missing = coverage.filter((item) => /missing|not-configured|not-applicable|failed/i.test(item.status)).slice(0, 10);
+  let md = "### Reviewed boundaries\n\n";
+  md += reviewed.length
+    ? reviewed.map((item) => `- ${item.area}: ${item.method} (${item.status}) - ${item.notes}`).join("\n")
+    : "- No reviewed coverage boundaries were recorded.";
+  md += "\n\n### Unreviewed or limited boundaries\n\n";
+  md += missing.length
+    ? missing.map((item) => `- ${item.area}: ${item.method} (${item.status}) - ${item.notes}`).join("\n")
+    : "- No missing or failed coverage boundaries were recorded.";
+  return md;
+}
+
+function renderDeepExploitabilityAssessment(report) {
+  const findings = report.findings
+    .filter((finding) => severityRank[finding.severity] >= severityRank.medium)
+    .slice(0, 12);
+  if (!findings.length) {
+    return "No medium-or-higher findings were recorded. The remaining report should still be read with the coverage matrix because absence of findings is not proof of absence.";
+  }
+
+  return findings.map((finding, index) => {
+    const status = findingStatus(finding);
+    const poc = safePocForFinding(finding, report);
+    return [
+      `### ${index + 1}. ${finding.title}`,
+      "",
+      `- Current status: ${status}.`,
+      `- Evidence basis: ${finding.evidence ? `\`${finding.evidence}\`` : "scanner/source signal only."}`,
+      `- Attack path to validate: ${findingRisk(finding)}`,
+      `- Impact if reachable: ${findingImpact(finding)}`,
+      `- Why this is not overstated: ${status === "Needs validation" ? "the report requires controlled validation before treating this as exploitable." : "the finding includes direct evidence or a high-confidence scanner/source observation."}`,
+      `- Next validation step: ${poc?.summary || "Validate safely with source review, staging proof, or logs."}`
+    ].join("\n");
+  }).join("\n\n");
+}
+
+function renderDeepEvidenceIndex(report) {
+  if (!report.findings.length) {
+    return "No finding evidence was recorded.";
+  }
+  let md = "| ID | Severity | Status | Surface | Evidence |\n|---|---|---|---|---|\n";
+  for (const finding of report.findings.slice(0, 80)) {
+    md += `| ${escapeTable(finding.id)} | ${escapeTable(capitalize(finding.severity))} | ${escapeTable(findingStatus(finding))} | ${escapeTable(finding.location || "")} | ${escapeTable(truncateForTable(finding.evidence || finding.title, 220))} |\n`;
+  }
+  if (report.findings.length > 80) {
+    md += `| ... | ... | ... | ... | Evidence index truncated at 80 of ${report.findings.length} findings. |\n`;
+  }
+  return md;
+}
+
+function renderDeepRemediationTasks(report) {
+  const findings = report.findings
+    .filter((finding) => severityRank[finding.severity] >= severityRank.medium)
+    .slice(0, 12);
+  if (!findings.length) {
+    return [
+      "- No critical, high, or medium remediation tasks were generated by this run.",
+      "- Review low/info findings for hardening and complete any skipped authenticated, dependency, or active scanner coverage before relying on the result."
+    ].join("\n");
+  }
+  return findings.map((finding, index) => {
+    const poc = safePocForFinding(finding, report);
+    const pieces = [
+      `${index + 1}. ${capitalize(finding.severity)} - ${finding.title}`,
+      `   - Fix: ${finding.remediation}`,
+      `   - Validate: ${poc?.summary || "Confirm with source review, staging proof, or logs."}`
+    ];
+    if (finding.location) pieces.push(`   - Surface: \`${finding.location}\``);
+    return pieces.join("\n");
+  }).join("\n");
+}
+
+function renderDeepSurfaceIndex(report) {
+  if (report.inventory.kind === "url") {
+    const rows = [];
+    for (const item of report.inventory.discoveredApiDocs || []) {
+      rows.push(["API/documentation", item.url || "", item.status ? `HTTP ${item.status}` : "discovered"]);
+    }
+    for (const item of report.inventory.discoveredUrls || []) {
+      rows.push(["Crawler URL", item, "same-scope crawler discovery"]);
+    }
+    for (const item of report.inventory.contentDiscoveryMatches || []) {
+      rows.push(["Content discovery", item.url || "", item.status ? `HTTP ${item.status}` : "matched"]);
+    }
+    if (!rows.length) return "No additional URL surface index was recorded beyond the primary response and reviewed surfaces table.";
+    return markdownRowsTable(["Type", "Surface", "Notes"], rows.slice(0, 80));
+  }
+
+  const rows = [];
+  for (const endpoint of report.inventory.endpoints || []) {
+    rows.push(["Route", `${String(endpoint.method || "").toUpperCase()} ${endpoint.route || ""}`, `${endpoint.location || ""}${endpoint.hasNearbyAuth ? " (nearby auth signal)" : " (no nearby auth signal)"}`]);
+  }
+  for (const file of report.inventory.apiArtifacts || []) {
+    rows.push(["API artifact", file, "definition/schema file"]);
+  }
+  for (const surface of report.reviewedSurfaces || []) {
+    rows.push(["Reviewed surface", surface.surface, `${surface.outcome}: ${surface.notes}`]);
+  }
+  if (!rows.length) return "No route, API artifact, or reviewed surface index was recorded.";
+  return markdownRowsTable(["Type", "Surface", "Notes"], rows.slice(0, 120));
+}
+
+function renderDeepFinalAssessment(report) {
+  const counts = severityCounts(report);
+  const statuses = validationStatusCounts(report);
+  const highest = ["critical", "high", "medium", "low", "info"].find((severity) => counts[severity]) || "none";
+  const lines = [];
+  lines.push(`- Final verdict: ${overallRiskLabel(counts)} with highest observed severity ${highest === "none" ? "none" : capitalize(highest)}.`);
+  lines.push(`- Evidence confidence: ${statuses.Confirmed || 0} confirmed, ${statuses.Likely || 0} likely, ${statuses["Needs validation"] || 0} needs validation.`);
+  lines.push("- Release posture: treat critical/high confirmed items as blocking; treat medium items as release-risk decisions; treat needs-validation items as required follow-up for high-value targets.");
+  lines.push("- Residual risk: scanner coverage is bounded by available source, authorization, reachable routes, installed tools, and non-destructive testing limits.");
+  return lines.join("\n");
+}
+
+function markdownKeyValueTable(rows) {
+  return markdownRowsTable(["Item", "Value"], rows);
+}
+
+function markdownRowsTable(headers, rows) {
+  let md = `| ${headers.map(escapeTable).join(" | ")} |\n| ${headers.map(() => "---").join(" | ")} |\n`;
+  for (const row of rows) {
+    md += `| ${row.map((value) => escapeTable(value)).join(" | ")} |\n`;
+  }
+  return md;
+}
+
+function summarizeEndpointMethods(endpoints) {
+  if (!endpoints?.length) return "";
+  const counts = endpoints.reduce((acc, endpoint) => {
+    const method = String(endpoint.method || "route").toUpperCase();
+    acc[method] = (acc[method] || 0) + 1;
+    return acc;
+  }, {});
+  return Object.entries(counts).map(([method, count]) => `${method} ${count}`).join(", ");
+}
+
+function summarizeNodeDependencyCounts(deps) {
+  if (!deps) return "not recorded";
+  return `dependencies=${deps.dependencies || 0}, devDependencies=${deps.devDependencies || 0}`;
+}
+
+function hasFindingCategory(report, category) {
+  return report.findings.some((finding) => finding.category === category);
+}
+
+function truncateForTable(value, max) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text.length > max ? `${text.slice(0, max - 3)}...` : text;
+}
+
 function renderAuthScope(report) {
   const scope = report.inventory.authScope;
   if (!scope) {
@@ -4107,6 +4395,8 @@ function renderHtml(report, markdown) {
     ${renderConfirmedRisksHtml(report)}
   </section>
 
+  ${isDeepReport(report) ? renderDeepReportHtml(report) : ""}
+
   <section class="page">
     <div class="grid two">
       <div class="panel"><h2>Coverage Matrix</h2>${renderCoverageMatrixHtml(report)}</div>
@@ -4330,12 +4620,124 @@ function renderConfirmedRisksHtml(report) {
   </article>`).join("");
 }
 
+function renderDeepReportHtml(report) {
+  const importantFindings = report.findings
+    .filter((finding) => severityRank[finding.severity] >= severityRank.medium)
+    .slice(0, 8);
+  return `
+  <section class="page">
+    <div class="section-title"><h2>Deep Review Narrative</h2><span>Reference-style audit detail</span></div>
+    <div class="grid two">
+      <div class="panel"><h2>Component Inventory</h2>${renderDeepComponentInventoryHtml(report)}</div>
+      <div class="panel"><h2>Core Security Invariants</h2>${htmlMarkdownList(renderDeepSecurityInvariants(report))}</div>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="grid two">
+      <div class="panel"><h2>Reconstructed Review Flow</h2>${htmlNumberedOrBulletList(renderDeepReviewFlow(report))}</div>
+      <div class="panel"><h2>Trust Assumptions</h2>${htmlMarkdownList(renderDeepTrustAssumptions(report))}</div>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="grid two">
+      <div class="panel"><h2>Boundary Conditions Reviewed</h2>${htmlParagraphs(renderDeepBoundaryConditions(report))}</div>
+      <div class="panel"><h2>Final Assessment</h2>${htmlMarkdownList(renderDeepFinalAssessment(report))}</div>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="section-title"><h2>Exploitability Assessment</h2><span>${importantFindings.length} prioritized item(s)</span></div>
+    ${renderDeepExploitabilityHtml(report, importantFindings)}
+  </section>
+
+  <section class="page">
+    <div class="section-title"><h2>Evidence Index</h2><span>Traceable finding evidence</span></div>
+    ${renderEvidenceIndexHtml(report)}
+  </section>
+
+  <section class="page">
+    <div class="grid two">
+      <div class="panel"><h2>Prioritized Remediation And Audit Tasks</h2>${htmlNumberedOrBulletList(renderDeepRemediationTasks(report))}</div>
+      <div class="panel"><h2>Source File And Surface Index</h2>${renderSurfaceIndexHtml(report)}</div>
+    </div>
+  </section>
+`;
+}
+
+function renderDeepComponentInventoryHtml(report) {
+  const markdown = renderDeepComponentInventory(report);
+  const rows = markdown.split(/\r?\n/).filter((line) => line.startsWith("|") && !line.includes("---")).slice(1);
+  if (!rows.length) return `<p class="empty">No component inventory was recorded.</p>`;
+  return `<table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody>${
+    rows.map((line) => {
+      const cells = line.split("|").slice(1, -1).map((cell) => cell.trim());
+      return `<tr><td>${escapeHtml(cells[0] || "")}</td><td>${escapeHtml(cells[1] || "")}</td></tr>`;
+    }).join("")
+  }</tbody></table>`;
+}
+
+function renderDeepExploitabilityHtml(report, findings) {
+  if (!findings.length) {
+    return `<p class="empty">No medium-or-higher findings were recorded. Review coverage and skipped checks before relying on the result.</p>`;
+  }
+  return findings.map((finding, index) => {
+    const status = findingStatus(finding);
+    const poc = safePocForFinding(finding, report);
+    return `<article class="finding ${escapeHtml(finding.severity)}">
+      <div class="finding-head"><h3>${index + 1}. ${escapeHtml(finding.title)}</h3><span class="badge ${escapeHtml(finding.severity)}">${escapeHtml(capitalize(finding.severity))}</span></div>
+      <div class="field"><strong>Current Status</strong>${escapeHtml(status)}</div>
+      <div class="field"><strong>Evidence Basis</strong>${finding.evidence ? `<code>${escapeHtml(finding.evidence)}</code>` : "scanner/source signal only."}</div>
+      <div class="field"><strong>Attack Path To Validate</strong>${escapeHtml(findingRisk(finding))}</div>
+      <div class="field"><strong>Impact If Reachable</strong>${escapeHtml(findingImpact(finding))}</div>
+      <div class="field"><strong>Why This Is Not Overstated</strong>${escapeHtml(status === "Needs validation" ? "The report requires controlled validation before treating this as exploitable." : "The finding includes direct evidence or a high-confidence scanner/source observation.")}</div>
+      <div class="field"><strong>Next Validation Step</strong>${escapeHtml(poc?.summary || "Validate safely with source review, staging proof, or logs.")}</div>
+    </article>`;
+  }).join("");
+}
+
+function renderEvidenceIndexHtml(report) {
+  if (!report.findings.length) return `<p class="empty">No finding evidence was recorded.</p>`;
+  return `<table><thead><tr><th>ID</th><th>Severity</th><th>Status</th><th>Surface</th><th>Evidence</th></tr></thead><tbody>${
+    report.findings.slice(0, 60).map((finding) => `<tr>
+      <td>${escapeHtml(finding.id)}</td>
+      <td><span class="badge ${escapeHtml(finding.severity)}">${escapeHtml(capitalize(finding.severity))}</span></td>
+      <td>${escapeHtml(findingStatus(finding))}</td>
+      <td>${finding.location ? `<code>${escapeHtml(finding.location)}</code>` : ""}</td>
+      <td>${escapeHtml(truncateForTable(finding.evidence || finding.title, 180))}</td>
+    </tr>`).join("")
+  }</tbody></table>${report.findings.length > 60 ? `<p class="muted">Evidence index truncated at 60 of ${report.findings.length} findings.</p>` : ""}`;
+}
+
+function renderSurfaceIndexHtml(report) {
+  const markdown = renderDeepSurfaceIndex(report);
+  if (!markdown.startsWith("|")) {
+    return `<p class="empty">${escapeHtml(markdown)}</p>`;
+  }
+  const lines = markdown.split(/\r?\n/).filter((line) => line.startsWith("|") && !line.includes("---"));
+  const headers = lines[0].split("|").slice(1, -1).map((cell) => cell.trim());
+  const rows = lines.slice(1).map((line) => line.split("|").slice(1, -1).map((cell) => cell.trim()));
+  return `<table><thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>${
+    rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")
+  }</tbody></table>`;
+}
+
 function htmlParagraphs(text) {
   return String(text || "")
     .split(/\n{2,}/)
     .filter(Boolean)
     .map((part) => `<p>${escapeHtml(part.trim())}</p>`)
     .join("");
+}
+
+function htmlNumberedOrBulletList(text) {
+  const lines = String(text || "").split(/\r?\n/).filter(Boolean);
+  if (!lines.length) return `<p class="empty">None recorded.</p>`;
+  if (lines.every((line) => /^\d+\.\s+/.test(line.trim()))) {
+    return `<ol>${lines.map((line) => `<li>${escapeHtml(line.trim().replace(/^\d+\.\s+/, ""))}</li>`).join("")}</ol>`;
+  }
+  return htmlMarkdownList(text);
 }
 
 function htmlMarkdownList(text) {

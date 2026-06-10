@@ -1,6 +1,6 @@
 {
   "name": "security-audit-pro",
-  "version": "0.8.4",
+  "version": "0.8.5",
   "description": "Universal security-audit plugin and CLI engine for AI agents, built for defensive website, API, and codebase audits with professional Markdown, HTML, and PDF reports.",
   "author": {
     "name": "Security Audit Pro maintainers",

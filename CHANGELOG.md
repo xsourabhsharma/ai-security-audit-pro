@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.5
+
+- Added `--report-depth standard|deep`, with `--profile deep` automatically selecting deep report depth.
+- Added reference-style deep report sections inspired by long-form manual security reviews: component inventory, reconstructed review flow, security invariants, trust assumptions, boundary conditions, exploitability narrative, evidence index, surface index, final assessment, and prioritized remediation/audit tasks.
+- Added matching printable HTML deep-report pages so Markdown and HTML outputs carry the same long-form analysis.
+- Extended the CLI self-test to verify deep report sections are generated.
+- Bumped package and plugin manifests to `0.8.5`.
+
 ## 0.8.4
 
 - Redesigned generated HTML reports into a printable report-document format instead of a website-style dashboard.

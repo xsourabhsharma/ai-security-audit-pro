@@ -54,6 +54,7 @@ node scripts/security-audit.mjs --target <path-or-url> --mode passive --out secu
    - Use `--mode standard --authorized` only when shallow exposure checks are appropriate and the user owns or is authorized to test the target.
    - Use `--mode active --authorized` only after explicit authorization for the exact URL.
    - Use `--profile deep` when the user explicitly asks for the fullest non-destructive authorized scan. Use `--profile safe` when rate or fragility is a concern.
+   - Use `--report-depth deep` when the user wants a long-form manual-review-style report without changing scan intensity. `--profile deep` enables deep report depth automatically.
    - Use `--diff-base <ref>` for Git-backed change scans.
    - Use `--scope-file <file>` when authenticated roles, business workflows, API scope, or source/live correlation is in scope.
    - Use `--html-out <file>` when the user wants a browser-readable report.
@@ -106,6 +107,26 @@ Use this shape for reports:
 ## Scope And Authorization
 
 ## Auth And Business Logic Scope
+
+## Component Inventory
+
+## Reconstructed Review Flow
+
+## Core Security Invariants
+
+## Trust Assumptions
+
+## Boundary Conditions Reviewed
+
+## Exploitability Assessment
+
+## Evidence Index
+
+## Prioritized Remediation And Audit Tasks
+
+## Source File And Surface Index
+
+## Final Assessment
 
 ## Critical Severity Findings
 
