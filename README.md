@@ -1,6 +1,6 @@
 # AI Security Audit Pro Plugin
 
-> A security-audit plugin that AI agents can actually run.
+> A security-audit plugin that AI agents can actually run
 
 ![CI](https://github.com/xsourabhsharma/ai-security-audit-pro/actions/workflows/ci.yml/badge.svg)
 [![npm](https://img.shields.io/npm/v/ai-security-audit-pro.svg)](https://www.npmjs.com/package/ai-security-audit-pro)
